@@ -4,6 +4,16 @@ server:
 spring:
   kafka:
     consumer:
-      bootstrap-servers: localhost:29092
-      enable-auto-commit: # tự động commit offset
+      bootstrap-servers: localhost:19092
+      enable-auto-commit: true
+
+clickhouse:
+  endpoint: http://localhost:8123
+  database: default
+  username: default
+  password: ""
+  connect-timeout: 30000
+  socket-timeout: 60000
+  max-connections: 10
+  compress: true
 

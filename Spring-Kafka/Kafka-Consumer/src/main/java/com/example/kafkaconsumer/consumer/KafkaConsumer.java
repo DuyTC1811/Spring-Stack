@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class KafkaConsumer {
 
-    @KafkaListener(topics = "test", groupId = "0")
+    @KafkaListener(topics = "pgserver.public.users", groupId = "0")
     public void consumer(ConsumerRecord<String, String> record) {
         log.info("[ RECEIVED-MESSAGE ]: [ TOPIC - {} ] , [ PARTITION - {} ], [ OFFSET - {} ], [ KEY - {} ], [ VALUE ] = {}",
                 record.topic(), record.partition(), record.offset(), record.key(), record.value());
