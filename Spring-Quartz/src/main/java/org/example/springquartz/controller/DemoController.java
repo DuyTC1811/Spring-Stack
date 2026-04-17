@@ -14,7 +14,10 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 import static org.example.springquartz.enums.ScheduleType.CRON;
 import static org.example.springquartz.enums.ScheduleType.SIMPLE;
@@ -74,7 +77,7 @@ public class DemoController {
 
     @GetMapping("/detect")
     public ResponseEntity<?> demo(@RequestHeader(value = "User-Agent", required = false) String userAgent) {
-        String source = detectSource(userAgent);
+        String source = detectSource(userAgent).name();
 
         return ResponseEntity.ok(Map.of(
                 "source", source,
@@ -82,48 +85,98 @@ public class DemoController {
         ));
     }
 
-    private String detectSource(String ua) {
-        if (ua == null || ua.isBlank()) return "UNKNOWN";
+    public enum Source {
+        UNKNOWN,
+        BOT,
+        // Testing tools
+        POSTMAN, INSOMNIA, CURL, HTTPIE, JMETER, K6,
+        // HTTP client libraries
+        FEIGN_CLIENT, OKHTTP_CLIENT, PYTHON_CLIENT, GO_CLIENT,
+        NODE_CLIENT, JAVA_CLIENT,
+        // Native mobile apps
+        ANDROID_APP, IOS_APP, FLUTTER_APP, REACT_NATIVE,
+        // Mobile/Tablet web
+        MOBILE_WEB_IOS, MOBILE_WEB_ANDROID,
+        TABLET_IOS, TABLET_ANDROID,
+        // Desktop browsers
+        WEB_EDGE, WEB_CHROME, WEB_FIREFOX, WEB_SAFARI, WEB_OPERA
+    }
+
+    // Pre-compile regex cho performance
+    private static final Pattern BOT_PATTERN =
+            Pattern.compile(".*\\b(bot|spider|crawler|slurp|bingpreview|facebookexternalhit)\\b.*");
+
+    // Rule = điều kiện match + source trả về. Thứ tự QUAN TRỌNG.
+    private record Rule(Predicate<String> match, Source source) {
+    }
+
+    private static final List<Rule> RULES = List.of(
+            // ===== BOT (ưu tiên cao nhất) =====
+            new Rule(ua -> BOT_PATTERN.matcher(ua).matches(), Source.BOT),
+
+            // ===== TESTING TOOLS =====
+            new Rule(ua -> ua.contains("postmanruntime") || ua.contains("postman"), Source.POSTMAN),
+            new Rule(ua -> ua.contains("insomnia"), Source.INSOMNIA),
+            new Rule(ua -> ua.startsWith("curl/"), Source.CURL),
+            new Rule(ua -> ua.contains("httpie"), Source.HTTPIE),
+            new Rule(ua -> ua.contains("jmeter"), Source.JMETER),
+            new Rule(ua -> ua.contains("k6/") || ua.contains("grafanak6"), Source.K6),
+
+            // ===== HTTP CLIENT LIBRARIES (signature rõ ràng) =====
+            new Rule(ua -> ua.contains("feign"), Source.FEIGN_CLIENT),
+            new Rule(ua -> ua.contains("python-requests")
+                    || ua.contains("python-urllib")
+                    || ua.contains("aiohttp"), Source.PYTHON_CLIENT),
+            new Rule(ua -> ua.contains("go-http-client"), Source.GO_CLIENT),
+            new Rule(ua -> ua.contains("axios/")
+                    || ua.contains("node-fetch")
+                    || ua.contains("got ("), Source.NODE_CLIENT),
+            new Rule(ua -> ua.contains("dart/")
+                    || ua.contains("dart:io"), Source.FLUTTER_APP),
+
+            // ===== NATIVE MOBILE APP =====
+            // React Native: OkHttp + "react" keyword
+            new Rule(ua -> ua.contains("okhttp") && ua.contains("react"), Source.REACT_NATIVE),
+            // Android native: OkHttp + Dalvik/Android (phân biệt với OkHttp backend)
+            new Rule(ua -> ua.contains("okhttp")
+                    && (ua.contains("dalvik") || ua.contains("android")), Source.ANDROID_APP),
+            // iOS native app
+            new Rule(ua -> ua.contains("cfnetwork") || ua.contains("darwin"), Source.IOS_APP),
+
+            // ===== MOBILE / TABLET WEB =====
+            // iPad trước iPhone (iPad UA có thể chứa "Mobile")
+            new Rule(ua -> ua.contains("ipad"), Source.TABLET_IOS),
+            new Rule(ua -> ua.contains("iphone") || ua.contains("ipod"), Source.MOBILE_WEB_IOS),
+            new Rule(ua -> ua.contains("android") && ua.contains("mobile"), Source.MOBILE_WEB_ANDROID),
+            new Rule(ua -> ua.contains("android"), Source.TABLET_ANDROID),
+
+            // ===== DESKTOP BROWSERS =====
+            // Thứ tự quan trọng: Edge/Opera trước Chrome (vì UA có cả "Chrome")
+            new Rule(ua -> ua.contains("edg/"), Source.WEB_EDGE),
+            new Rule(ua -> ua.contains("opr/") || ua.contains("opera"), Source.WEB_OPERA),
+            new Rule(ua -> ua.contains("firefox"), Source.WEB_FIREFOX),
+            new Rule(ua -> ua.contains("chrome") || ua.contains("crios"), Source.WEB_CHROME),
+            // Safari check cuối (Chrome/Edge UA đều chứa "Safari")
+            new Rule(ua -> ua.contains("safari"), Source.WEB_SAFARI),
+
+            // ===== GENERIC HTTP CLIENTS (fallback, check cuối) =====
+            // OkHttp nhưng không phải React Native / Android app -> backend
+            new Rule(ua -> ua.contains("okhttp"), Source.OKHTTP_CLIENT),
+            new Rule(ua -> ua.contains("java/")
+                    || ua.contains("jdk/")
+                    || ua.contains("apache-httpclient")
+                    || ua.contains("jakarta-httpclient"), Source.JAVA_CLIENT)
+    );
+
+    public Source detectSource(String ua) {
+        if (ua == null || ua.isBlank()) return Source.UNKNOWN;
 
         String lower = ua.toLowerCase();
-
-        // ===== BOT =====
-        if (lower.contains("bot") || lower.contains("spider") || lower.contains("crawler")) {
-            return "BOT";
-        }
-
-        // ===== TOOL =====
-        if (lower.contains("postman")) return "POSTMAN";
-        if (lower.contains("insomnia")) return "INSOMNIA";
-        if (lower.contains("curl")) return "CURL";
-        if (lower.contains("httpie")) return "HTTPIE";
-        if (lower.contains("jmeter")) return "JMETER";
-        if (lower.contains("k6")) return "K6";
-
-        // ===== BACKEND CLIENT =====
-        if (lower.contains("feign")) return "FEIGN_CLIENT";
-        if (lower.contains("okhttp") && lower.contains("react")) return "REACT_NATIVE";
-        if (lower.contains("okhttp")) return "ANDROID_APP";
-        if (lower.contains("cfnetwork") || lower.contains("darwin")) return "IOS_APP";
-        if (lower.contains("dart")) return "FLUTTER_APP";
-        if (lower.contains("python-requests")) return "PYTHON";
-        if (lower.contains("go-http-client")) return "GO_CLIENT";
-        if (lower.contains("axios") || lower.contains("node")) return "NODEJS";
-        if (lower.matches(".*(java|jdk|httpclient).*")) return "JAVA_CLIENT";
-
-        // ===== MOBILE WEB =====
-        if (lower.contains("iphone")) return "MOBILE_WEB_IOS";
-        if (lower.contains("ipad")) return "TABLET_IOS";
-        if (lower.contains("android") && lower.contains("mobile")) return "MOBILE_WEB_ANDROID";
-        if (lower.contains("android")) return "TABLET_ANDROID";
-
-        // ===== DESKTOP WEB =====
-        if (lower.contains("edg/")) return "WEB_EDGE";
-        if (lower.contains("chrome")) return "WEB_CHROME";
-        if (lower.contains("firefox")) return "WEB_FIREFOX";
-        if (lower.contains("safari")) return "WEB_SAFARI";
-
-        return "UNKNOWN";
+        return RULES.stream()
+                .filter(r -> r.match().test(lower))
+                .findFirst()
+                .map(Rule::source)
+                .orElse(Source.UNKNOWN);
     }
 
 }
