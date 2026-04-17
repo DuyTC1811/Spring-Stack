@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import static org.example.springsecurity.enums.EException.OTP_IS_INCORRECT;
 import static org.example.springsecurity.utils.TOTPUtil.generateSecret;
 
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/2fa")
@@ -31,7 +32,7 @@ public class TwoFactorController {
 
     @PostMapping("/enable")
     public ResponseEntity<byte[]> enable2FA() {
-        byte[] qrImage = twoFactorService.generateQrCode(generateSecret(), "", "DEM_APP");
+        byte[] qrImage = twoFactorService.generateQrCode(generateSecret(), "noname", "DEM_APP");
         return ResponseEntity.status(201)
                 .contentType(MediaType.IMAGE_PNG)
                 .body(qrImage);
@@ -43,7 +44,7 @@ public class TwoFactorController {
 //        UserEntity user = userRepository.findById(username)
 //                .orElseThrow(() -> new RuntimeException("Không tìm thấy user"));
 
-        boolean valid = twoFactorService.verifyCode("asdfasdf", Integer.parseInt(req1.code));
+        boolean valid = twoFactorService.verifyCode("asdfasdf", req1.code);
         if (!valid) {
             throw new BaseException(OTP_IS_INCORRECT);
         }

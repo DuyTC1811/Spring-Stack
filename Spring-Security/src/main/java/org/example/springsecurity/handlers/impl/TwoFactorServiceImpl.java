@@ -5,39 +5,25 @@ import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import org.apache.commons.codec.binary.Base32;
-import org.example.springsecurity.exceptions.BaseException;
+import org.example.springsecurity.enums.HmacAlgorithm;
 import org.example.springsecurity.handlers.ITwoFactorService;
+
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
-import static org.example.springsecurity.enums.EException.OTP_INVALID;
-import static org.example.springsecurity.utils.TOTPUtil.genCode;
+import static org.example.springsecurity.utils.TOTPUtil.verifyTotp;
+
 
 @Service
 public class TwoFactorServiceImpl implements ITwoFactorService {
 
     @Override
-    public boolean verifyCode(String secret, int code) {
-        // variance = 0 → chỉ check đúng chu kỳ hiện tại (30 giây)
-        // variance = 1 → check 3 chu kỳ (90 giây)
-        int variance = 1;
-            try {
-                long timeIndex = System.currentTimeMillis() / 1000 / 30;
-                byte[] secretBytes = new Base32().decode(secret);
-
-                for (int i = -variance; i <= variance; i++) {
-                    if (genCode(secretBytes, timeIndex + i) == code) {
-                        return true;
-                    }
-                }
-                return false;
-            } catch (Exception e) {
-                throw new BaseException(OTP_INVALID);
-            }
-
+    public boolean verifyCode(String secret, String code) {
+        byte[] secretBytes = new Base32().decode(secret);
+        return verifyTotp(secretBytes, code, 6);
     }
 
     @Override
