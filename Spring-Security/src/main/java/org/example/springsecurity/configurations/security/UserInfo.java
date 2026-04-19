@@ -76,4 +76,9 @@ public class UserInfo implements UserDetails {
         UserInfo user = (UserInfo) o;
         return Objects.equals(userId, user.userId);
     }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(userId);
+    }
 }

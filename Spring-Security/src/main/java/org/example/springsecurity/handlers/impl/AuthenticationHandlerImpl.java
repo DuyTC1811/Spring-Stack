@@ -43,6 +43,8 @@ import static org.example.springsecurity.enums.EException.USER_ALREADY_EXISTS;
 @Service
 @RequiredArgsConstructor
 public class AuthenticationHandlerImpl implements IAuthenticationHandler {
+    public static final String BLACKLIST_PREFIX = "blacklist:";
+
     @Value("${spring.security.access-token}")
     private String accessSecretToken;
     @Value("${spring.security.access-token-time}")
@@ -132,17 +134,27 @@ public class AuthenticationHandlerImpl implements IAuthenticationHandler {
     @Override
     @Transactional
     public RefreshTokenResp refreshToken(RefreshTokenReq request) {
-        if (jwtUtil.isTokenValid(request.getRefreshToken(), refreshSecretToken)) {
+        String oldRefreshToken = request.getRefreshToken();
+        if (!jwtUtil.isTokenValid(oldRefreshToken, refreshSecretToken)) {
             throw new BaseException(403, "Token của bạn không hợp lệ vui lòng đăng nhập lại");
         }
 
-        Integer version = jwtUtil.extractVersion(request.getRefreshToken(), refreshSecretToken);
-        String username = jwtUtil.extractUsername(request.getRefreshToken(), refreshSecretToken);
+        String oldJti = jwtUtil.extractJti(oldRefreshToken, refreshSecretToken);
+        if (isBlacklisted(oldJti)) {
+            throw new BaseException(403, "Token của bạn không hợp lệ vui lòng đăng nhập lại");
+        }
+
+        Integer version = jwtUtil.extractVersion(oldRefreshToken, refreshSecretToken);
+        String username = jwtUtil.extractUsername(oldRefreshToken, refreshSecretToken);
         var userDetails = userDetailsService.loadUserByUsername(username);
 
-        if (version != userDetails.getTokenVersion()) {
+        if (version == null || version != userDetails.getTokenVersion()) {
             throw new BaseException(403, "Token của bạn không hợp lệ vui lòng đăng nhập lại");
         }
+
+        // Rotate: blacklist refresh token cũ TRƯỚC khi phát hành token mới để chặn replay.
+        Date oldExpiration = jwtUtil.extractExpiration(oldRefreshToken, refreshSecretToken);
+        blacklistToken(oldJti, oldExpiration);
 
         GenerateTokenInfo generateTokenInfo = GenerateTokenInfo.builder()
                 .uuid(UUID.randomUUID().toString())
@@ -156,25 +168,20 @@ public class AuthenticationHandlerImpl implements IAuthenticationHandler {
 
         String accessToken = jwtUtil.accessToken(generateTokenInfo);
         String refreshToken = jwtUtil.refreshToken(generateTokenInfo);
-
-        String jti = jwtUtil.extractJti(request.getRefreshToken(), refreshSecretToken);
-        String tokenKey = "blacklist:" + jti.hashCode();
-        Date expiration = jwtUtil.extractExpiration(request.getRefreshToken(), refreshSecretToken);
-        // Add token to blacklist
-        cacheService.putCache(jti, tokenKey, expiration.getTime());
         return new RefreshTokenResp(accessToken, refreshToken);
     }
 
     @Override
+    @Transactional
     public UpdatePasswordResp updatePassword(UpdatePasswordReq request) {
         UserInfo userInfo = jwtUtil.usernameByContext();
         String passwordOld = authMapper.findPasswordByUserName(userInfo.getUsername());
-        if (!passwordEncoder.matches(request.getPasswordOld(), passwordOld) || passwordOld == null) {
+        if (passwordOld == null || !passwordEncoder.matches(request.getPasswordOld(), passwordOld)) {
             throw new BaseException(400, "tai khoan mat khau khong dung");
         }
 
         authMapper.updatePassword(userInfo.getUsername(), passwordEncoder.encode(request.getNewPassword()));
-        // Update Version Token
+        // Bump version → invalidate toàn bộ access/refresh token cũ.
         tokenStorageMapper.updateTokenVersion(userInfo.getUsername());
         return new UpdatePasswordResp("Successfully updated password");
     }
@@ -208,17 +215,32 @@ public class AuthenticationHandlerImpl implements IAuthenticationHandler {
     @Override
     public void logout(HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
         response.setStatus(HttpStatus.OK.value());
+        String assetToken = jwtUtil.parseJwt(request);
+        if (assetToken != null) {
+            try {
+                String jti = jwtUtil.extractJti(assetToken, accessSecretToken);
+                Date expiration = jwtUtil.extractExpiration(assetToken, accessSecretToken);
+                blacklistToken(jti, expiration);
+            } catch (Exception ignored) {
+                // token malformed/expired → bỏ qua, chỉ cần clear security context.
+            }
+        }
         if (authentication != null) {
             authentication.setAuthenticated(false);
-            SecurityContextHolder.clearContext();
         }
-        String assetToken = jwtUtil.parseJwt(request);
-        String jti = jwtUtil.extractJti(assetToken, accessSecretToken);
-        String tokenKey = "blacklist:" + jti.hashCode();
+        SecurityContextHolder.clearContext();
+    }
 
-        // Extract expiration date from the token
-        Date expiration = jwtUtil.extractExpiration(assetToken, accessSecretToken);
-        // Add token to blacklist
-        cacheService.putCache(jti, tokenKey, expiration.getTime());
+    private void blacklistToken(String jti, Date expiration) {
+        long remainingMinutes = Math.max(
+                1L,
+                (expiration.getTime() - System.currentTimeMillis()) / 60_000L
+        );
+        cacheService.putCache(BLACKLIST_PREFIX + jti, "revoked", remainingMinutes);
+    }
+
+    private boolean isBlacklisted(String jti) {
+        String value = cacheService.getCache(BLACKLIST_PREFIX + jti);
+        return value != null && !value.isBlank();
     }
 }

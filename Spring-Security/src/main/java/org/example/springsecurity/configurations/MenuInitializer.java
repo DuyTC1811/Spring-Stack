@@ -20,12 +20,12 @@ public class MenuInitializer implements ApplicationRunner {
 
     @Override
     public void run(@NonNull ApplicationArguments args) {
+        if (!log.isDebugEnabled()) {
+            return;
+        }
         Map<RequestMappingInfo, HandlerMethod> map = mapping.getHandlerMethods();
         for (Map.Entry<RequestMappingInfo, HandlerMethod> entry : map.entrySet()) {
-            RequestMappingInfo key = entry.getKey();
-            HandlerMethod value = entry.getValue();
-            log.info("{}", key);
-            log.info("{}", value);
+            log.debug("{} -> {}", entry.getKey(), entry.getValue());
         }
     }
 }

@@ -1,56 +1,71 @@
 package org.example.springsecurity.controllers;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
+import org.example.springsecurity.configurations.jwt.JwtUtil;
 import org.example.springsecurity.exceptions.BaseException;
 import org.example.springsecurity.handlers.ITwoFactorService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import static org.example.springsecurity.enums.EException.OTP_IS_INCORRECT;
-import static org.example.springsecurity.utils.TOTPUtil.generateSecret;
 
 
 @RestController
 @RequiredArgsConstructor
+@Tag(name = "TWO-FACTOR", description = "API 2FA")
 @RequestMapping("/api/2fa")
+@PreAuthorize("isAuthenticated()")
 public class TwoFactorController {
     private final ITwoFactorService twoFactorService;
+    private final JwtUtil jwtUtil;
 
-    @PostMapping("/setup/{username}")
-    public byte[] setup(@PathVariable String username) {
-
-        String issuer = "MySpringApp";
-//        String otpAuthUrl = twoFactorService.buildOtpAuthUrl(secret, username, issuer);
-
-        return twoFactorService.generateQrCode(generateSecret(), username, issuer);
-    }
-
-    @PostMapping("/enable")
-    public ResponseEntity<byte[]> enable2FA() {
-        byte[] qrImage = twoFactorService.generateQrCode(generateSecret(), "noname", "DEM_APP");
-        return ResponseEntity.status(201)
+    @Operation(summary = "Khởi tạo 2FA: trả về QR code cho user đang đăng nhập")
+    @PostMapping("/setup")
+    public ResponseEntity<byte[]> setup() {
+        String username = currentUsername();
+        byte[] qrImage = twoFactorService.beginSetup(username);
+        return ResponseEntity.ok()
                 .contentType(MediaType.IMAGE_PNG)
                 .body(qrImage);
     }
 
+    @Operation(summary = "Xác nhận code sau khi scan QR để kích hoạt 2FA")
     @PostMapping("/verify-setup")
-    public String confirm(@RequestBody Enable2FAReq req) {
-        Enable2FAReq req1 = new Enable2FAReq(null);
-//        UserEntity user = userRepository.findById(username)
-//                .orElseThrow(() -> new RuntimeException("Không tìm thấy user"));
-
-        boolean valid = twoFactorService.verifyCode("asdfasdf", req1.code);
-        if (!valid) {
+    public ResponseEntity<String> confirm(@RequestBody @Valid OtpCodeReq req) {
+        String username = currentUsername();
+        if (!twoFactorService.confirmSetup(username, req.code())) {
             throw new BaseException(OTP_IS_INCORRECT);
         }
-        return "Bật 2FA thành công";
+        return ResponseEntity.ok("Bật 2FA thành công");
     }
 
-    record Enable2FAReq(String code) {
+    @Operation(summary = "Verify OTP cho user đã bật 2FA")
+    @PostMapping("/verify")
+    public ResponseEntity<String> verify(@RequestBody @Valid OtpCodeReq req) {
+        String username = currentUsername();
+        if (!twoFactorService.verifyCode(username, req.code())) {
+            throw new BaseException(OTP_IS_INCORRECT);
+        }
+        return ResponseEntity.ok("OTP hợp lệ");
+    }
+
+    private String currentUsername() {
+        String username = jwtUtil.usernameByContext().getUsername();
+        if (username == null || username.isBlank()) {
+            throw new BaseException(401, "Unauthorized");
+        }
+        return username;
+    }
+
+    public record OtpCodeReq(@NotBlank String code) {
     }
 }

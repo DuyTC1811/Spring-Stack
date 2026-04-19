@@ -4,16 +4,16 @@ server:
 spring:
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://localhost:5432/postgres
-    username: duytc
-    password: anhduy12
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/postgres}
+    username: ${DB_USERNAME:duytc}
+    password: ${DB_PASSWORD:}
     hikari:
       auto-commit: true
-      minimum-idle: 1            # Số lượng kết nối nhàn rỗi tối thiểu
-      maximum-pool-size: 5       # Số lượng kết nối tối đa
-      idle-timeout: 60000        # Thời gian chờ nhàn rỗi (60 giây)
-      max-lifetime: 200000       # Thời gian sống tối đa của kết nối (200 giây)
-      connection-timeout: 20000  # Thời gian chờ kết nối (20 giây)
+      minimum-idle: 1
+      maximum-pool-size: 5
+      idle-timeout: 60000
+      max-lifetime: 200000
+      connection-timeout: 20000
       pool-name: '[ CONNECT ] ===>'
 
   liquibase:
@@ -22,26 +22,12 @@ spring:
     clear-checksums: true
 
   security:
-    access-token: 9QZaVt1gRjmNWtEPksgNaJ7OT6OmnbNQxxx334sdeaFxxx1
-    access-token-time: 900000
-    refresh-token: 9QZaVt1gRjmNWtEPksgNaJ7OT6OmnbNQxxx334sdeaFxxx2
-    refresh-token-time: 900000
-    verified-token: 9QZaVt1gRjmNWtEPksgNaJ7OT6OmnbNQxxx334sdeaFxxx3
-    verified-token-time: 900000
-
-  #  mail:
-  #    default-encoding: UTF-8
-  #    host: smtp.gmail.com
-  #    port: 587
-  #    username: hulkhulk1245@gmail.com
-  #    password: tcjdgzuimnyzrfsi
-  #    mail-from: hulkhulk1245@gmail.com
-  #    protocol: smtp
-  #    test-connection: true
-  #    properties:
-  #      mail.smtp.auth: true
-  #      mail.smtp.starttls.enable: true
-  #      mail.smtp.starttls.required: true
+    access-token: ${JWT_ACCESS_SECRET:}
+    access-token-time: ${JWT_ACCESS_TTL_MS:900000}
+    refresh-token: ${JWT_REFRESH_SECRET:}
+    refresh-token-time: ${JWT_REFRESH_TTL_MS:604800000}
+    verified-token: ${JWT_VERIFIED_SECRET:}
+    verified-token-time: ${JWT_VERIFIED_TTL_MS:600000}
 
   freemarker:
     template-loader-path: classpath:/templates/mail
@@ -79,7 +65,8 @@ cors:
       - /v3/api-docs/**
       - /swagger-resources/**
       - /webjars/**
-      - /api/auth/**
-      - /api/2fa/setup/**
-      - /api/2fa/**
-      - /api/test/**
+      - /api/auth/login
+      - /api/auth/signup
+      - /api/auth/reset-token
+      - /api/auth/forgot-password
+      - /api/auth/validate-token
