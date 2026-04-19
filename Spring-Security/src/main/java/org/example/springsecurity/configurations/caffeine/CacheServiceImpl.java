@@ -16,7 +16,7 @@ public class CacheServiceImpl implements ICacheService {
     public void putCache(String key, String value, Long duration) {
         CacheValueWrapper<String> cacheValue = new CacheValueWrapper<>(value, duration);
         cache.put(key, cacheValue);
-        LOGGER.info("[ PUT CACHE ] - with key: {} and value: {} duration: {} minutes", key, value, duration);
+        LOGGER.debug("[ PUT CACHE ] key={} ttl={}m", key, duration);
     }
 
     @Override
@@ -24,19 +24,14 @@ public class CacheServiceImpl implements ICacheService {
         CacheValueWrapper<String> cacheValue = cache.getIfPresent(key);
 
         if (cacheValue == null) {
-            LOGGER.info("[ GET CACHE ] - KEY: {} not found in cache", key);
             return "";
         }
 
-        // Check cache expired time
         if (cacheValue.isExpired()) {
-            cache.invalidate(key);  // delete cache if expired
-            LOGGER.info("[ GET CACHE ] - KEY: {} is expired and removed", key);
+            cache.invalidate(key);
             return "";
         }
 
-        String value = cacheValue.getValue();
-        LOGGER.info("[ GET CACHE ] - KEY: {} VALUE: {}", key, value);
-        return value;
+        return cacheValue.getValue();
     }
 }

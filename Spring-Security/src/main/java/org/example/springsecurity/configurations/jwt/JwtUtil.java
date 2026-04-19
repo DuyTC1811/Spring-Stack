@@ -43,9 +43,7 @@ public class JwtUtil {
                 "username", info.getUsername(),
                 "version", info.getVersion()
         );
-        String assetToken = createToken(info.getUuid(), claims, info.getUsername(), info.getAccessKey(), info.getAccessExpireTime());
-        LOGGER.info("[ ACCESS-TOKEN ] - {}", assetToken);
-        return assetToken;
+        return createToken(info.getUuid(), claims, info.getUsername(), info.getAccessKey(), info.getAccessExpireTime());
     }
 
     public String refreshToken(GenerateTokenInfo info) {
@@ -53,18 +51,14 @@ public class JwtUtil {
                 "username", info.getUsername(),
                 "version", info.getVersion()
         );
-        String refreshToken = createToken(info.getUuid(), claims, info.getUsername(), info.getRefreshKey(), info.getRefreshExpireTime());
-        LOGGER.info("[ REFRESH-TOKEN ] - {}", refreshToken);
-        return refreshToken;
+        return createToken(info.getUuid(), claims, info.getUsername(), info.getRefreshKey(), info.getRefreshExpireTime());
     }
 
     public String verifiedToken(GenerateTokenInfo info, String secretKey, int expiryTime) {
         Map<String, Object> claims = Map.of(
                 "username", info.getUsername()
         );
-        String token = createToken(info.getUuid(), claims, info.getUsername(), secretKey, expiryTime);
-        LOGGER.info("[ VERIFIED-TOKEN ] - {}", token);
-        return token;
+        return createToken(info.getUuid(), claims, info.getUsername(), secretKey, expiryTime);
     }
 
 
@@ -95,7 +89,6 @@ public class JwtUtil {
                 .issuedAt(new Date(System.currentTimeMillis()))
                 .expiration(new Date(System.currentTimeMillis() + expirationTime))
                 .signWith(generalSigningKey(secretKey))
-                .encryptWith(generalSigningKey(secretKey), Jwts.ENC.A256GCM)
                 .compact();
     }
 
@@ -121,15 +114,15 @@ public class JwtUtil {
      */
     public boolean isTokenValid(String token, String secretKey, UserDetails userDetails) {
         final String username = extractUsername(token, secretKey);
-        return (username.equals(userDetails.getUsername())) && isTokenExpired(token, secretKey);
+        return username.equals(userDetails.getUsername()) && !isTokenExpired(token, secretKey);
     }
 
     public boolean isTokenValid(String token, String secretKey) {
-        return isTokenExpired(token, secretKey);
+        return !isTokenExpired(token, secretKey);
     }
 
     private boolean isTokenExpired(String token, String secretKey) {
-        return !extractExpiration(token, secretKey).before(new Date());
+        return extractExpiration(token, secretKey).before(new Date());
     }
 
     public Date extractExpiration(String token, String secretKey) {
@@ -151,10 +144,14 @@ public class JwtUtil {
     }
 
     private SecretKey generalSigningKey(String secretKey) {
+        if (secretKey == null || secretKey.isBlank()) {
+            LOGGER.error("JWT signing key is not configured");
+            throw new BaseException(500, "Lỗi hệ thống vui lòng thử lại sau");
+        }
         byte[] keyBytes = Decoders.BASE64.decode(secretKey);
-        if (keyBytes.length < 32) { // 32 bytes = 256 bits
-            LOGGER.error("The key byte array is too short. It must be at least 256 bits (32 bytes) long. {}", secretKey);
-            throw new BaseException(400, "Lỗi hệ thông vui lòng thử lại sau");
+        if (keyBytes.length < 32) {
+            LOGGER.error("JWT signing key is too short; require >= 256 bits");
+            throw new BaseException(500, "Lỗi hệ thống vui lòng thử lại sau");
         }
         return Keys.hmacShaKeyFor(keyBytes);
     }

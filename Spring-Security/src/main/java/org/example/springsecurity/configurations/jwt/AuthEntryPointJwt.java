@@ -21,24 +21,25 @@ import java.util.Map;
 public class AuthEntryPointJwt implements AuthenticationEntryPoint {
     private static final Logger LOGGER = LoggerFactory.getLogger(AuthEntryPointJwt.class);
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) {
-        LOGGER.error("Forbidden : {}", authException.getMessage());
+        LOGGER.warn("Unauthorized access to {}: {}", request.getRequestURI(), authException.getMessage());
 
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 
         final Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", LocalDateTime.now().toString());
-        body.put("code", HttpServletResponse.SC_FORBIDDEN);
-        body.put("detail", authException.getMessage());
+        body.put("code", HttpServletResponse.SC_UNAUTHORIZED);
+        body.put("detail", "Unauthorized");
         body.put("description", "You are not authorized to access this resource");
 
-        final ObjectMapper mapper = new ObjectMapper();
         try {
-            mapper.writeValue(response.getOutputStream(), body);
+            MAPPER.writeValue(response.getOutputStream(), body);
         } catch (IOException e) {
-            LOGGER.error("Mapper error: {}", e.getMessage());
+            LOGGER.error("Failed to write auth error response", e);
         }
     }
 }

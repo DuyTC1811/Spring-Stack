@@ -4,9 +4,9 @@ server:
 spring:
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://localhost:5432/postgres
-    username: postgres
-    password: anhduy12
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/postgres}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
     hikari:
       auto-commit: true
       idle-timeout: 20000
@@ -20,22 +20,22 @@ spring:
     clear-checksums: true
 
   security:
-    access-token: 9QZaVt1gRjmNWtEPksgNaJ7OT6OmnbNQxxx334sdeaFxxx1
-    access-token-time: 900000
-    refresh-token: 9QZaVt1gRjmNWtEPksgNaJ7OT6OmnbNQxxx334sdeaFxxx2
-    refresh-token-time: 900000
-    verified-token: 9QZaVt1gRjmNWtEPksgNaJ7OT6OmnbNQxxx334sdeaFxxx3
-    verified-token-time: 900000
+    access-token: ${JWT_ACCESS_SECRET:}
+    access-token-time: ${JWT_ACCESS_TTL_MS:900000}
+    refresh-token: ${JWT_REFRESH_SECRET:}
+    refresh-token-time: ${JWT_REFRESH_TTL_MS:604800000}
+    verified-token: ${JWT_VERIFIED_SECRET:}
+    verified-token-time: ${JWT_VERIFIED_TTL_MS:600000}
 
   mail:
     default-encoding: UTF-8
-    host: smtp.gmail.com
-    port: 587
-    username: hulkhulk1245@gmail.com
-    password: ""
-    mail-from: hulkhulk1245@gmail.com
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    mail-from: ${MAIL_FROM:}
     protocol: smtp
-    test-connection: true
+    test-connection: false
     properties:
       mail.smtp.auth: true
       mail.smtp.starttls.enable: true
@@ -61,6 +61,13 @@ mybatis:
 
 cors:
   allowed:
-    origins: "http://localhost:4200"
-    methods: "GET,POST,PUT,DELETE"
-    headers: "Content-Type,Authorization"
+    origins:
+      - ${CORS_ORIGINS:http://localhost:4200}
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    headers:
+      - Content-Type
+      - Authorization

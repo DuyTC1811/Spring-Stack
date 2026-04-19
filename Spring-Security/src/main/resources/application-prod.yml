@@ -1,39 +1,39 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 spring:
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://localhost:5432/postgres
-    username: postgres
-    password: anhduy12
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     hikari:
       auto-commit: true
       idle-timeout: 20000
-      maximum-pool-size: 2
+      maximum-pool-size: 10
       max-lifetime: 200000
       connection-timeout: 20000
       pool-name: '[ CONNECT ] ===>'
 
   liquibase:
     change-log: classpath:liquibase/main-changelog.yml
-    clear-checksums: true
+    clear-checksums: false
 
   security:
-    access-token: 9QZaVt1gRjmNWtEPksgNaJ7OT6OmnbNQxxx334sdeaFxxx1
-    access-token-time: 900000
-    refresh-token: 9QZaVt1gRjmNWtEPksgNaJ7OT6OmnbNQxxx334sdeaFxxx2
-    refresh-token-time: 900000
-    verified-token: 9QZaVt1gRjmNWtEPksgNaJ7OT6OmnbNQxxx334sdeaFxxx3
-    verified-token-time: 900000
+    access-token: ${JWT_ACCESS_SECRET}
+    access-token-time: ${JWT_ACCESS_TTL_MS:900000}
+    refresh-token: ${JWT_REFRESH_SECRET}
+    refresh-token-time: ${JWT_REFRESH_TTL_MS:604800000}
+    verified-token: ${JWT_VERIFIED_SECRET}
+    verified-token-time: ${JWT_VERIFIED_TTL_MS:600000}
 
   mail:
     default-encoding: UTF-8
-    host: smtp.gmail.com
-    port: 587
-    username: hulkhulk1245@gmail.com
-    password: ""
-    mail-from: hulkhulk1245@gmail.com
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    mail-from: ${MAIL_FROM}
     protocol: smtp
     test-connection: true
     properties:
@@ -49,8 +49,7 @@ spring:
 
 springdoc:
   api-docs:
-    url-product: http://localhost:8080
-    url-dev: http://localhost:8080
+    enabled: false
 
 mybatis:
   configuration:
@@ -61,6 +60,13 @@ mybatis:
 
 cors:
   allowed:
-    origins: "http://localhost:10000"
-    methods: "GET,POST,PUT,DELETE"
-    headers: "Content-Type,Authorization"
+    origins:
+      - ${CORS_ORIGINS}
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    headers:
+      - Content-Type
+      - Authorization

@@ -8,6 +8,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.example.springsecurity.configurations.caffeine.ICacheService;
 import org.example.springsecurity.configurations.security.UserInfoServiceImpl;
 import org.example.springsecurity.exceptions.BaseException;
+import org.example.springsecurity.handlers.impl.AuthenticationHandlerImpl;
 import org.jspecify.annotations.NullMarked;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -43,9 +44,8 @@ public class AuthTokenFilter extends OncePerRequestFilter {
                 return;
             }
 
-            //TODO Check Black List
             String jti = jwtUtil.extractJti(jwtToken, secretAccessToken);
-            String cache = cacheService.getCache(jti);
+            String cache = cacheService.getCache(AuthenticationHandlerImpl.BLACKLIST_PREFIX + jti);
             if (StringUtils.isNoneBlank(cache)) {
                 throw new BaseException(403, "Token của bạn không hợp lệ vui lòng đăng nhập lại");
             }
@@ -59,8 +59,7 @@ public class AuthTokenFilter extends OncePerRequestFilter {
 
                 if (jwtUtil.isTokenValid(jwtToken, secretAccessToken, userDetails)) {
 
-                    //TODO check version
-                    if (userDetails.getTokenVersion() != tokenVersion) {
+                    if (tokenVersion == null || userDetails.getTokenVersion() != tokenVersion) {
                         throw new BaseException(403, "Token của bạn không hợp lệ vui lòng đăng nhập lại");
                     }
 

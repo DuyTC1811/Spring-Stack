@@ -13,7 +13,7 @@ public interface IAuthenticationMapper {
     @Select("SELECT * FROM users us WHERE us.username = #{username}")
     UserInfo findByUsername(@Param("username") String username);
 
-    @Select("SELECT COUNT(*) FROM users WHERE email = #{username}")
+    @Select("SELECT COUNT(*) FROM users WHERE username = #{username}")
     boolean isExistsUsername(@Param("username") String username);
 
     @Select("SELECT COUNT(*) FROM users WHERE email = #{email}")
@@ -29,5 +29,5 @@ public interface IAuthenticationMapper {
     String findPasswordByUserName(@Param("username") String username);
 
     @Update("UPDATE users SET password = #{newPassword} WHERE username = #{username}")
-    void updatePassword(String username, String newPassword);
+    void updatePassword(@Param("username") String username, @Param("newPassword") String newPassword);
 }
