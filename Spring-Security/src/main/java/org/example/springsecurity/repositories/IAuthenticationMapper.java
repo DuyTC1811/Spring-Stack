@@ -30,4 +30,7 @@ public interface IAuthenticationMapper {
 
     @Update("UPDATE users SET password = #{newPassword} WHERE username = #{username}")
     void updatePassword(@Param("username") String username, @Param("newPassword") String newPassword);
+
+    @Update("UPDATE users SET two_fa_secret = #{secret}, is_enable_two_fa = #{isEnable} WHERE username = #{username}")
+    void updateTwoFaSecret(@Param("username") String username, @Param("secret") String secret, @Param("isEnable") boolean isEnable);
 }

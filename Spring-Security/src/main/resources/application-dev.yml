@@ -19,13 +19,13 @@ spring:
     change-log: classpath:liquibase/main-changelog.yml
     clear-checksums: true
 
-  security:
-    access-token: ${JWT_ACCESS_SECRET:}
-    access-token-time: ${JWT_ACCESS_TTL_MS:900000}
-    refresh-token: ${JWT_REFRESH_SECRET:}
-    refresh-token-time: ${JWT_REFRESH_TTL_MS:604800000}
-    verified-token: ${JWT_VERIFIED_SECRET:}
-    verified-token-time: ${JWT_VERIFIED_TTL_MS:600000}
+  jwt:
+    access-secret: ${JWT_ACCESS_SECRET:}
+    access-time: ${JWT_ACCESS_TTL_MS:900000}
+    refresh-secret: ${JWT_REFRESH_SECRET:}
+    refresh-time: ${JWT_REFRESH_TTL_MS:604800000}
+    verified-secret: ${JWT_VERIFIED_SECRET:}
+    verified-time: ${JWT_VERIFIED_TTL_MS:600000}
 
   mail:
     default-encoding: UTF-8

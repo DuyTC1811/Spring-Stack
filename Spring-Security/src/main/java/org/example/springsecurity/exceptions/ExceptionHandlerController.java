@@ -97,32 +97,38 @@ public class ExceptionHandlerController {
     // Security exceptions
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ExceptionResponse> handlerResponse(BadCredentialsException exception) {
+        exception.printStackTrace(System.err);
         return build(HttpStatus.UNAUTHORIZED.value(), GENERIC_UNAUTHORIZED, "The username or password is incorrect");
     }
 
     @ExceptionHandler(AccountStatusException.class)
     public ResponseEntity<ExceptionResponse> handlerResponse(AccountStatusException exception) {
+        exception.printStackTrace(System.err);
         return build(HttpStatus.FORBIDDEN.value(), GENERIC_FORBIDDEN, "The account is locked");
     }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ExceptionResponse> handlerResponse(AccessDeniedException exception) {
+        exception.printStackTrace(System.err);
         return build(HttpStatus.FORBIDDEN.value(), GENERIC_FORBIDDEN, "You are not authorized to access this resource");
     }
 
     // JWT exceptions
     @ExceptionHandler(SignatureException.class)
     public ResponseEntity<ExceptionResponse> handlerResponse(SignatureException exception) {
+        exception.printStackTrace(System.err);
         return build(HttpStatus.FORBIDDEN.value(), GENERIC_FORBIDDEN, "The JWT signature is invalid");
     }
 
     @ExceptionHandler(ExpiredJwtException.class)
     public ResponseEntity<ExceptionResponse> handlerResponse(ExpiredJwtException exception) {
+        exception.printStackTrace(System.err);
         return build(HttpStatus.FORBIDDEN.value(), GENERIC_FORBIDDEN, "The JWT token has expired");
     }
 
     @ExceptionHandler(MalformedJwtException.class)
     public ResponseEntity<ExceptionResponse> handlerResponse(MalformedJwtException exception) {
+        exception.printStackTrace(System.err);
         return build(HttpStatus.FORBIDDEN.value(), GENERIC_FORBIDDEN, "Invalid JWT");
     }
 

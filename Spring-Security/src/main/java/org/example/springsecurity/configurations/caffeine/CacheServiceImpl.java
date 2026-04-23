@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+
 @Component
 @RequiredArgsConstructor
 public class CacheServiceImpl implements ICacheService {
@@ -13,7 +15,7 @@ public class CacheServiceImpl implements ICacheService {
     private final Cache<String, CacheValueWrapper<String>> cache;
 
     @Override
-    public void putCache(String key, String value, Long duration) {
+    public void putCache(String key, String value, Duration duration) {
         CacheValueWrapper<String> cacheValue = new CacheValueWrapper<>(value, duration);
         cache.put(key, cacheValue);
         LOGGER.debug("[ PUT CACHE ] key={} ttl={}m", key, duration);
@@ -32,6 +34,6 @@ public class CacheServiceImpl implements ICacheService {
             return "";
         }
 
-        return cacheValue.getValue();
+        return cacheValue.value();
     }
 }

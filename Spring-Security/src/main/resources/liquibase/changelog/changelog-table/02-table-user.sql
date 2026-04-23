@@ -24,6 +24,8 @@ COMMENT ON COLUMN users.status IS 'TRẠN THÁI TÀI KHOẢN: ACTIVE, INACTIVE, 
 COMMENT ON COLUMN users.email IS 'ĐỊA CHỈ EMAIL';
 COMMENT ON COLUMN users.registration IS 'NGUỒN ĐĂNG KÝ: FACEBOOK, GOOGLE, MANUAL';
 COMMENT ON COLUMN users.password IS 'MẬT KHẨU';
+COMMENT ON COLUMN users.twofa_secret IS 'SECRET 2FA';
+COMMENT ON COLUMN users.twofa_enabled IS 'TRẠNG THÁI 2FA';
 COMMENT ON COLUMN users.created_date IS 'NGÀY ĐĂNG KÝ';
 COMMENT ON COLUMN users.updated_date IS 'NGÀY SỬA ĐỔI';
 

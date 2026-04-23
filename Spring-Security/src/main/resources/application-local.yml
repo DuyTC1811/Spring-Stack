@@ -9,25 +9,24 @@ spring:
     password: ${DB_PASSWORD:}
     hikari:
       auto-commit: true
-      minimum-idle: 1
-      maximum-pool-size: 5
-      idle-timeout: 60000
-      max-lifetime: 200000
-      connection-timeout: 20000
+      minimum-idle: 1            # Số lượng kết nối nhàn rỗi tối thiểu
+      maximum-pool-size: 5       # Số lượng kết nối tối đa
+      idle-timeout: 60000        # Thời gian chờ nhàn rỗi (60 giây)
+      max-lifetime: 200000       # Thời gian sống tối đa của kết nối (200 giây)
+      connection-timeout: 20000  # Thời gian chờ kết nối (20 giây)
       pool-name: '[ CONNECT ] ===>'
 
   liquibase:
     enabled: true
     change-log: classpath:liquibase/main-changelog.yml
-    clear-checksums: true
 
-  security:
-    access-token: ${JWT_ACCESS_SECRET:}
-    access-token-time: ${JWT_ACCESS_TTL_MS:900000}
-    refresh-token: ${JWT_REFRESH_SECRET:}
-    refresh-token-time: ${JWT_REFRESH_TTL_MS:604800000}
-    verified-token: ${JWT_VERIFIED_SECRET:}
-    verified-token-time: ${JWT_VERIFIED_TTL_MS:600000}
+  jwt:
+    access-secret: ${JWT_ACCESS_SECRET:}
+    access-time: ${JWT_ACCESS_TTL_MS:900000}
+    refresh-secret: ${JWT_REFRESH_SECRET:}
+    refresh-time: ${JWT_REFRESH_TTL_MS:604800000}
+    verified-secret: ${JWT_VERIFIED_SECRET:}
+    verified-time: ${JWT_VERIFIED_TTL_MS:600000}
 
   freemarker:
     template-loader-path: classpath:/templates/mail

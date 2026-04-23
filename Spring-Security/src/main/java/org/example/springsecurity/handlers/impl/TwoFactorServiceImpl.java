@@ -7,6 +7,7 @@ import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.codec.binary.Base32;
+import org.apache.commons.lang3.StringUtils;
 import org.example.springsecurity.configurations.caffeine.ICacheService;
 import org.example.springsecurity.exceptions.BaseException;
 import org.example.springsecurity.handlers.ITwoFactorService;
@@ -17,6 +18,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 import static org.example.springsecurity.utils.TOTPUtil.generateSecret;
 import static org.example.springsecurity.utils.TOTPUtil.verifyTotp;
@@ -28,12 +30,10 @@ public class TwoFactorServiceImpl implements ITwoFactorService {
 
     private static final String PENDING_PREFIX = "2fa:pending:";
     private static final String ENABLED_PREFIX = "2fa:enabled:";
-    private static final long PENDING_TTL_MINUTES = 5;
-    // Secret đã enable tồn tại trong cache 30 ngày (hệ thống nên persist xuống DB ở phiên bản thật).
-    private static final long ENABLED_TTL_MINUTES = 60L * 24 * 30;
     private static final int TOTP_WINDOW = 1;
 
     private final ICacheService cacheService;
+    private final AuthenticationHandlerImpl authenticationHandler;
 
     @Value("${app.two-factor.issuer:MySpringApp}")
     private String issuer;
@@ -41,27 +41,27 @@ public class TwoFactorServiceImpl implements ITwoFactorService {
     @Override
     public byte[] beginSetup(String username) {
         String secret = generateSecret();
-        cacheService.putCache(PENDING_PREFIX + username, secret, PENDING_TTL_MINUTES);
+        cacheService.putCache(PENDING_PREFIX + username, secret, Duration.ofMinutes(5));
         return generateQrCode(secret, username);
     }
 
     @Override
     public boolean confirmSetup(String username, String code) {
         String secret = cacheService.getCache(PENDING_PREFIX + username);
-        if (secret == null || secret.isBlank()) {
+        if (StringUtils.isBlank(secret)) {
             throw new BaseException(400, "Phiên thiết lập 2FA đã hết hạn, vui lòng thử lại");
         }
         if (!verifyDecoded(secret, code)) {
             return false;
         }
-        cacheService.putCache(ENABLED_PREFIX + username, secret, ENABLED_TTL_MINUTES);
+        authenticationHandler.updateTwoFaSecret(username, secret, true);
         return true;
     }
 
     @Override
     public boolean verifyCode(String username, String code) {
         String secret = cacheService.getCache(ENABLED_PREFIX + username);
-        if (secret == null || secret.isBlank()) {
+        if (StringUtils.isBlank(code)) {
             return false;
         }
         return verifyDecoded(secret, code);

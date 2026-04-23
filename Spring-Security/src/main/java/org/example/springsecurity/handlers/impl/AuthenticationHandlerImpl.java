@@ -33,12 +33,14 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.util.Date;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
 import static org.example.springsecurity.enums.EException.USER_ALREADY_EXISTS;
+import static org.springframework.http.HttpStatus.FORBIDDEN;
 
 @Service
 @RequiredArgsConstructor
@@ -135,13 +137,13 @@ public class AuthenticationHandlerImpl implements IAuthenticationHandler {
     @Transactional
     public RefreshTokenResp refreshToken(RefreshTokenReq request) {
         String oldRefreshToken = request.getRefreshToken();
-        if (!jwtUtil.isTokenValid(oldRefreshToken, refreshSecretToken)) {
-            throw new BaseException(403, "Token của bạn không hợp lệ vui lòng đăng nhập lại");
+        if (jwtUtil.isTokenValid(oldRefreshToken, refreshSecretToken)) {
+            throw new BaseException(FORBIDDEN.value(), "Token của bạn không hợp lệ vui lòng đăng nhập lại");
         }
 
         String oldJti = jwtUtil.extractJti(oldRefreshToken, refreshSecretToken);
         if (isBlacklisted(oldJti)) {
-            throw new BaseException(403, "Token của bạn không hợp lệ vui lòng đăng nhập lại");
+            throw new BaseException(FORBIDDEN.value(), "Token của bạn không hợp lệ vui lòng đăng nhập lại");
         }
 
         Integer version = jwtUtil.extractVersion(oldRefreshToken, refreshSecretToken);
@@ -149,7 +151,7 @@ public class AuthenticationHandlerImpl implements IAuthenticationHandler {
         var userDetails = userDetailsService.loadUserByUsername(username);
 
         if (version == null || version != userDetails.getTokenVersion()) {
-            throw new BaseException(403, "Token của bạn không hợp lệ vui lòng đăng nhập lại");
+            throw new BaseException(FORBIDDEN.value(), "Token của bạn không hợp lệ vui lòng đăng nhập lại");
         }
 
         // Rotate: blacklist refresh token cũ TRƯỚC khi phát hành token mới để chặn replay.
@@ -188,8 +190,8 @@ public class AuthenticationHandlerImpl implements IAuthenticationHandler {
 
     @Override
     public ValidateTokenResp validateToken(ValidateTokenReq request) {
-        if (!jwtUtil.isTokenValid(request.getToken(), verifiedToken)) {
-            throw new BaseException(403, "Token invalid");
+        if (jwtUtil.isTokenValid(request.getToken(), verifiedToken)) {
+            throw new BaseException(FORBIDDEN.value(), "Token invalid");
         }
         return new ValidateTokenResp("Successfully validated token");
     }
@@ -209,6 +211,11 @@ public class AuthenticationHandlerImpl implements IAuthenticationHandler {
         // TODO send mail
         // mailService.sendMailForgotPassword(generateToken, userInfo.getEmail());
         return new ForgotPasswordResp("Successfully forgot password");
+    }
+
+    @Override
+    public void updateTwoFaSecret(String username, String secret, boolean isEnable) {
+        authMapper.updateTwoFaSecret(username, secret, isEnable);
     }
 
 
@@ -236,7 +243,7 @@ public class AuthenticationHandlerImpl implements IAuthenticationHandler {
                 1L,
                 (expiration.getTime() - System.currentTimeMillis()) / 60_000L
         );
-        cacheService.putCache(BLACKLIST_PREFIX + jti, "revoked", remainingMinutes);
+        cacheService.putCache(BLACKLIST_PREFIX + jti, "revoked", Duration.ofMinutes(remainingMinutes));
     }
 
     private boolean isBlacklisted(String jti) {

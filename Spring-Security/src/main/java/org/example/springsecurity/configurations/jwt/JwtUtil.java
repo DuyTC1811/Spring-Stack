@@ -15,6 +15,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.crypto.SecretKey;
 import java.util.Date;
@@ -118,7 +120,7 @@ public class JwtUtil {
     }
 
     public boolean isTokenValid(String token, String secretKey) {
-        return !isTokenExpired(token, secretKey);
+        return isTokenExpired(token, secretKey);
     }
 
     private boolean isTokenExpired(String token, String secretKey) {
@@ -176,6 +178,12 @@ public class JwtUtil {
             }
         }
         return username;
+    }
+
+    public String tokenContext() {
+        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
+        HttpServletRequest request = attrs.getRequest();
+        return parseJwt(request);
     }
 
 }

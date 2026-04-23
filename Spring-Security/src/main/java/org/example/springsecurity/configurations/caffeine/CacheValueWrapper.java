@@ -1,20 +1,19 @@
 package org.example.springsecurity.configurations.caffeine;
 
-import lombok.Getter;
+import java.time.Duration;
+import java.time.Instant;
 
-import java.time.LocalDateTime;
-
-@Getter
-public class CacheValueWrapper<T> {
-    private final T value;
-    private final LocalDateTime expirationTime;
-
-    public CacheValueWrapper(T value, Long durationInMinutes) {
-        this.value = value;
-        this.expirationTime = LocalDateTime.now().plusMinutes(durationInMinutes);
+public record CacheValueWrapper<T>(T value, Instant expirationTime) {
+    public CacheValueWrapper(T value, Duration duration) {
+        this(value, Instant.now().plus(duration));
     }
 
     public boolean isExpired() {
-        return LocalDateTime.now().isAfter(expirationTime);
+        return Instant.now().isAfter(expirationTime);
+    }
+
+    public Duration remainingTtl() {
+        Duration remaining = Duration.between(Instant.now(), expirationTime);
+        return remaining.isNegative() ? Duration.ZERO : remaining;
     }
 }

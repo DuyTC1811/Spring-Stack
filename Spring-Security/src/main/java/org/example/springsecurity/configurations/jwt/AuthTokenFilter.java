@@ -23,7 +23,7 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
 @NullMarked
 @RequiredArgsConstructor
 public class AuthTokenFilter extends OncePerRequestFilter {
-    @Value("${spring.security.access-token}")
+    @Value("${spring.jwt.access-token}")
     private String secretAccessToken;
 
     private final JwtUtil jwtUtil;

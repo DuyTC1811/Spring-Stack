@@ -5,7 +5,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
+import org.example.springsecurity.configurations.caffeine.ICacheService;
 import org.example.springsecurity.configurations.jwt.JwtUtil;
+import org.example.springsecurity.configurations.properties.SecurityProperties;
+import org.example.springsecurity.configurations.security.UserInfo;
 import org.example.springsecurity.exceptions.BaseException;
 import org.example.springsecurity.handlers.ITwoFactorService;
 import org.springframework.http.MediaType;
@@ -16,17 +19,24 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
+
 import static org.example.springsecurity.enums.EException.OTP_IS_INCORRECT;
+import static org.example.springsecurity.enums.ESensitivityLevel.CRITICAL;
 
 
 @RestController
 @RequiredArgsConstructor
 @Tag(name = "TWO-FACTOR", description = "API 2FA")
 @RequestMapping("/api/2fa")
-@PreAuthorize("isAuthenticated()")
+@PreAuthorize("isAuthenticated()") // CHECK ĐÃ ĐĂNG NHẬP CHƯA
 public class TwoFactorController {
     private final ITwoFactorService twoFactorService;
+    private final ICacheService cacheService;
     private final JwtUtil jwtUtil;
+    private final SecurityProperties securityProperties;
+
+    private static final String KEY_PREFIX = "2fa:stepup:%s:%s";
 
     @Operation(summary = "Khởi tạo 2FA: trả về QR code cho user đang đăng nhập")
     @PostMapping("/setup")
@@ -52,15 +62,20 @@ public class TwoFactorController {
     @PostMapping("/verify")
     public ResponseEntity<String> verify(@RequestBody @Valid OtpCodeReq req) {
         String username = currentUsername();
+        String token = jwtUtil.tokenContext();
+        String jti = jwtUtil.extractJti(token, securityProperties.getAccessSecret());
+
         if (!twoFactorService.verifyCode(username, req.code())) {
             throw new BaseException(OTP_IS_INCORRECT);
         }
-        return ResponseEntity.ok("OTP hợp lệ");
+        String key = String.format(KEY_PREFIX, username, jti);
+        cacheService.putCache(key, req.code, Duration.ofMinutes(CRITICAL.getMinutes()));
+        return ResponseEntity.ok("Verify Successfully");
     }
 
     private String currentUsername() {
         String username = jwtUtil.usernameByContext().getUsername();
-        if (username == null || username.isBlank()) {
+        if (username.isBlank()) {
             throw new BaseException(401, "Unauthorized");
         }
         return username;

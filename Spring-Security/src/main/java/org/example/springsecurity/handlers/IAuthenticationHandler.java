@@ -31,4 +31,6 @@ public interface IAuthenticationHandler extends LogoutHandler {
     ValidateTokenResp validateToken(ValidateTokenReq request);
 
     ForgotPasswordResp forgotPassword(ForgotPasswordReq request, HttpServletRequest httpRequest);
+
+    void updateTwoFaSecret(String username, String secret, boolean isEnable);
 }
