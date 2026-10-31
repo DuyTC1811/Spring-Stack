@@ -1,7 +1,7 @@
 package org.example.springpdf.service;
 
 public interface IPDFService {
-    void createPDF(String filename);
+    byte[] createPDF();
 
     void createImagePDF(String inImageFilename, String outFilename);
 }

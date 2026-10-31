@@ -10,7 +10,7 @@ description = "Spring-PDF"
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }
 
@@ -31,6 +31,7 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("com.github.librepdf:openpdf:3.0.0")
+    implementation("org.apache.pdfbox:pdfbox:3.0.8")
 }
 
 tasks.withType<Test> {
