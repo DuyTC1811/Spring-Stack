@@ -10,6 +10,7 @@ import com.example.libreoffice.payload.request.CreateDocumentRequest;
 import com.example.libreoffice.payload.request.OfficeCallbackRequest;
 import com.example.libreoffice.payload.response.CreateDocumentResponse;
 import com.example.libreoffice.repository.IOfficeRepository;
+import com.example.libreoffice.util.ObjectKeys;
 import com.example.libreoffice.util.OfficeMime;
 import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.Http;
@@ -46,8 +47,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class OfficeServiceImpl implements IOfficeService {
     private static final String SRC_UPLOAD = "UPLOAD";
-    private static final String SRC_CLOSE_SAVE = "CLOSE_SAVE";
-    private static final String SRC_FORCE_SAVE = "FORCE_SAVE";
 
     private final IOfficeRepository officeRepository;
     private final MinioClient minio;
@@ -79,7 +78,7 @@ public class OfficeServiceImpl implements IOfficeService {
             // Bị xóa bởi request khác ngay giữa lúc kiểm tra và cập nhật
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tài liệu đã bị xóa");
         }
-        log.info("Xóa mềm document id={} name={} by={}", id, doc.name(), user.id());
+        log.info("XÓA MỀM DOCUMENT ID [{}] NAME [{}] BY [{}]", id, doc.name(), user.displayName());
     }
 
     @Override
@@ -127,21 +126,38 @@ public class OfficeServiceImpl implements IOfficeService {
      */
     private CreateDocumentResponse store(String name, String ext, byte[] data, CurrentUser user) {
         UUID id = UUID.randomUUID();
-        String objectKey = newObjectKey(id, ext);
+        String bucket = props.bucket();
+        String objectKey = ObjectKeys.original(id, ext);
+        long start = System.nanoTime();
 
-        putObject(props.bucket(), objectKey, data, OfficeMime.of(ext));
-        try {
-            transactionTemplate.executeWithoutResult(_ -> {
-                officeRepository.insertDocument(id, name, ext, OfficeMime.of(ext), data.length, props.bucket(), objectKey, user.id());
-                String editorKey = officeRepository.getEditorKey(id);
-                officeRepository.insertVersion(id, 1, objectKey, data.length, sha256(data), SRC_UPLOAD, editorKey, List.of(user.id()));
-            });
-        } catch (RuntimeException e) {
-            removeObjectQuietly(props.bucket(), objectKey);
-            throw e;
+        try (var _ = MDC.putCloseable("docId", id.toString())) {
+            log.info("[CREATE] BẮT ĐẦU TẠO DOCUMENT NAME [{}] EXT [{}] SIZE [{}] BYTES BY [{}]",
+                    name, ext, data.length, user.id());
+
+            // UPLOAD LÊN MINIO TRƯỚC
+            long nanoTime = System.nanoTime();
+            putObject(bucket, objectKey, data, OfficeMime.of(ext));
+            log.info("[CREATE] UPLOAD MINIO OK OBJECT={}/{} ({} MS)", bucket, objectKey, ms(nanoTime));
+
+            // GHI DB SAU, LỖI THÌ XÓA OBJECT (BÙ TRỪ)
+            try {
+                nanoTime = System.nanoTime();
+                String checksum = sha256(data);
+                transactionTemplate.executeWithoutResult(_ -> {
+                    officeRepository.insertDocument(id, name, ext, OfficeMime.of(ext), data.length, bucket, objectKey, user.id());
+                    String editorKey = officeRepository.getEditorKey(id);
+                    officeRepository.insertVersion(id, 1, objectKey, data.length, checksum, SRC_UPLOAD, editorKey, List.of(user.id()));
+                });
+                log.info("[CREATE] GHI DB OK ({} MS)", ms(nanoTime));
+            } catch (RuntimeException e) {
+                log.error("[CREATE] GHI DB THẤT BẠI → XÓA OBJECT {}/{}", bucket, objectKey, e);
+                removeObjectQuietly(bucket, objectKey);
+                throw e;
+            }
+
+            log.info("[CREATE] ✅ TẠO DOCUMENT THÀNH CÔNG NAME [{}] (TỔNG {} MS)", name, ms(start));
+            return new CreateDocumentResponse(id, name, ext);
         }
-        log.info("Tạo document id={} name={} by={}", id, name, user.id());
-        return new CreateDocumentResponse(id, name, ext);
     }
 
     // =====================================================================
@@ -159,7 +175,7 @@ public class OfficeServiceImpl implements IOfficeService {
 
         DocPermission perm = doc.effectivePermission();
         if (perm == null) {
-            log.warn("User {} không có quyền với document {}", user.id(), id);
+            log.warn("[GET CONFIG] USER {} KHÔNG CÓ QUYỀN VỚI DOCUMENT {}", user.id(), id);
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không có quyền truy cập tài liệu này");
         }
 
@@ -185,7 +201,7 @@ public class OfficeServiceImpl implements IOfficeService {
                 "user", Map.of("id", user.id(), "name", user.displayName()),
                 "customization", Map.of("forcesave", true));
 
-        log.info("Cấp config document={} version={} user={} perm={}",
+        log.info("[GET CONFIG] DOCUMENT={} VERSION={} USER={} PERM={}",
                 id, doc.currentVersion(), user.id(), perm);
 
         return Map.of(
@@ -195,7 +211,7 @@ public class OfficeServiceImpl implements IOfficeService {
     }
 
     // =====================================================================
-    // Callback từ ONLYOFFICE
+    // Callback từ ONLY-OFFICE
     // =====================================================================
 
     @Override
@@ -204,16 +220,16 @@ public class OfficeServiceImpl implements IOfficeService {
         try {
             id = UUID.fromString(docId);
         } catch (IllegalArgumentException e) {
-            log.warn("Callback với id không hợp lệ: {}", docId);
+            log.warn("[CALLBACK] VỚI ID KHÔNG HỢP LỆ: {}", docId);
             return 0;
         }
-        log.info("Callback document={} key={} status={} users={}", id, cb.key(), cb.status(), cb.users());
+        log.info("[CALLBACK] DOCUMENT={} KEY={} STATUS={} USERS={}", id, cb.key(), cb.status(), cb.users());
 
         return switch (cb.status()) {
             case 2 -> saveVersion(id, cb, true);      // đóng phiên, có thay đổi
             case 6 -> saveVersion(id, cb, false);     // force save
             case 3, 7 -> {
-                log.error("LỖI LƯU DOCUMENT {} STATUS {}", id, cb.status());
+                log.error("[CALLBACK] LỖI LƯU DOCUMENT {} STATUS {}", id, cb.status());
                 officeRepository.insertCallbackLog(id, cb, null, "ONLY-OFFICE save error");
                 yield 0;
             }
@@ -222,7 +238,8 @@ public class OfficeServiceImpl implements IOfficeService {
     }
 
     private int saveVersion(UUID id, OfficeCallbackRequest cb, boolean closeSession) {
-        String source = closeSession ? SRC_CLOSE_SAVE : SRC_FORCE_SAVE;
+        ObjectKeys.SaveSource saveSource = closeSession ? ObjectKeys.SaveSource.CLOSE_SAVE : ObjectKeys.SaveSource.FORCE_SAVE;
+        String source = saveSource.name();     // "CLOSE_SAVE" | "FORCE_SAVE", dùng cho log + insertVersion
         long start = System.nanoTime();
 
         try (var _ = MDC.putCloseable("docId", id.toString());
@@ -269,7 +286,7 @@ public class OfficeServiceImpl implements IOfficeService {
             }
 
             // UPLOAD LÊN MINIO (OBJECT MỚI, KHÔNG GHI ĐÈ)
-            String objectKey = newObjectKey(id, target.fileExt());
+            String objectKey = ObjectKeys.version(id, saveSource, target.fileExt());
             nanoTime = System.nanoTime();
             try {
                 putObject(target.bucket(), objectKey, data, OfficeMime.of(target.fileExt()));
@@ -286,14 +303,14 @@ public class OfficeServiceImpl implements IOfficeService {
             try {
                 nanoTime = System.nanoTime();
                 Integer newVersion = transactionTemplate.execute(tx -> {
-                    Integer v = officeRepository.saveNewVersion(id, cb.key(), objectKey, data.length, lastUser, closeSession).orElse(null);
-                    if (v == null) {
+                    Integer vertion = officeRepository.saveNewVersion(id, cb.key(), objectKey, data.length, lastUser, closeSession).orElse(null);
+                    if (vertion == null) {
                         tx.setRollbackOnly();
                         return null;
                     }
-                    officeRepository.insertVersion(id, v, objectKey, data.length, sha256(data), source, cb.key(), users);
-                    officeRepository.insertCallbackLog(id, cb, v, null);
-                    return v;
+                    officeRepository.insertVersion(id, vertion, objectKey, data.length, sha256(data), source, cb.key(), users);
+                    officeRepository.insertCallbackLog(id, cb, vertion, null);
+                    return vertion;
                 });
 
                 if (newVersion == null) {
