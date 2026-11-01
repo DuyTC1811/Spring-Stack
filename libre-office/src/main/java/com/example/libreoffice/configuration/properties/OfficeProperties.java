@@ -7,8 +7,8 @@ import java.util.List;
 
 @ConfigurationProperties(prefix = "only-office")
 public record OfficeProperties(
-        String callbackBaseUrl,          // URL mà container ONLY-OFFICE gọi được
-        String bucket,          // URL mà container ONLY-OFFICE gọi được
+        String callbackBaseUrl,
+        String bucket,
         Duration presignTtl,
         List<String> allowedDownloadHosts
 ) {

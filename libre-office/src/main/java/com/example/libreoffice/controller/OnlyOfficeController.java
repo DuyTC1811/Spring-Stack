@@ -1,10 +1,9 @@
 package com.example.libreoffice.controller;
 
 import com.example.libreoffice.configuration.config.FakeUserProvider;
-import com.example.libreoffice.model.CurrentUser;
 import com.example.libreoffice.model.DocumentItem;
 import com.example.libreoffice.payload.request.CreateDocumentRequest;
-import com.example.libreoffice.payload.response.DocumentCreated;
+import com.example.libreoffice.payload.response.CreateDocumentResponse;
 import com.example.libreoffice.service.IOfficeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,10 +44,10 @@ public class OnlyOfficeController {
      * Upload file có sẵn.
      */
     @PostMapping(value = "/documents/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<DocumentCreated> upload(
+    public ResponseEntity<CreateDocumentResponse> upload(
             @RequestPart("file") MultipartFile file,
             @RequestHeader(value = FakeUserProvider.HEADER, defaultValue = FakeUserProvider.DEFAULT_USER) String u) {
-        DocumentCreated upload = officeService.upload(file, fakeUsers.resolve(u));
+        CreateDocumentResponse upload = officeService.upload(file, fakeUsers.resolve(u));
         return ResponseEntity.status(HttpStatus.CREATED).body(upload);
     }
 
@@ -56,10 +55,10 @@ public class OnlyOfficeController {
      * Tạo tài liệu trắng từ template.
      */
     @PostMapping("/documents")
-    public ResponseEntity<DocumentCreated> create(
+    public ResponseEntity<CreateDocumentResponse> create(
             /*@Valid*/ @RequestBody CreateDocumentRequest req,
                        @RequestHeader(value = FakeUserProvider.HEADER, defaultValue = FakeUserProvider.DEFAULT_USER) String u) {
-        DocumentCreated created = officeService.createBlank(req, fakeUsers.resolve(u));
+        CreateDocumentResponse created = officeService.createBlank(req, fakeUsers.resolve(u));
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

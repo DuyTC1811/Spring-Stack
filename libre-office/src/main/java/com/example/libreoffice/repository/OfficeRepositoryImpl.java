@@ -3,7 +3,7 @@ package com.example.libreoffice.repository;
 import com.example.libreoffice.model.CallbackTarget;
 import com.example.libreoffice.model.DocumentItem;
 import com.example.libreoffice.model.OfficeDocument;
-import com.example.libreoffice.payload.request.OfficeCallback;
+import com.example.libreoffice.payload.request.OfficeCallbackRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -82,12 +82,27 @@ public class OfficeRepositoryImpl implements IOfficeRepository {
             """;
 
     private static final String SQL_INSERT_CALLBACK_LOG = """
-            INSERT INTO office_callback_log
-                   (document_id, editor_key, status, file_url, payload, result_version, error)
-            VALUES (:docId, :editorKey, CAST(:status AS smallint), :url,
-                    jsonb_build_object('users', CAST(:users AS varchar[]),
-                                       'forcesavetype', CAST(:forceSaveType AS int)),
-                    :resultVersion, :error)
+            INSERT INTO office_callback_log (
+                document_id,
+                editor_key,
+                status,
+                file_url,
+                payload,
+                result_version,
+                error
+            )
+            VALUES (
+                :docId,
+                :editorKey,
+                CAST(:status AS smallint),
+                :url,
+                jsonb_build_object(
+                    'users',         CAST(:users AS varchar[]),
+                    'forcesavetype', CAST(:forceSaveType AS int)
+                ),
+                :resultVersion,
+                :error
+            )
             """;
 
 
@@ -110,7 +125,7 @@ public class OfficeRepositoryImpl implements IOfficeRepository {
     }
 
     // =====================================================================
-    // Đọc
+    // READ
     // =====================================================================
     @Override
     public Optional<OfficeDocument> getConfigById(UUID docId, String userId, Collection<String> roles) {
@@ -163,7 +178,7 @@ public class OfficeRepositoryImpl implements IOfficeRepository {
     }
 
     // =====================================================================
-    // Ghi
+    // INSERT
     // =====================================================================
 
     @Override
@@ -203,31 +218,24 @@ public class OfficeRepositoryImpl implements IOfficeRepository {
                 .param("rotateKey", rotateKey)
                 .param("docId", docId)
                 .param("editorKey", editorKey)
-                .query(Integer.class)               // UPDATE ... RETURNING
+                .query(Integer.class) // UPDATE ... RETURNING
                 .optional();
     }
 
     @Override
-    public void insertCallbackLog(UUID docId, OfficeCallback cb, Integer resultVersion, String error) {
+    public void insertCallbackLog(UUID docId, OfficeCallbackRequest cb, Integer resultVersion, String error) {
         jdbcClient.sql(SQL_INSERT_CALLBACK_LOG)
                 .param("docId", docId)
                 .param("editorKey", cb.key())
                 .param("status", cb.status())
                 .param("url", cb.url())
                 .param("users", toArray(cb.users()))
-                .param("forceSaveType", cb.forcesavetype(), Types.INTEGER)   // có thể null
-                .param("resultVersion", resultVersion, Types.INTEGER)        // có thể null
+                .param("forceSaveType", cb.forcesavetype(), Types.INTEGER)
+                .param("resultVersion", resultVersion, Types.INTEGER)
                 .param("error", error, Types.VARCHAR)
                 .update();
     }
 
-    // =====================================================================
-    // Utils
-    // =====================================================================
-
-    /**
-     * Truyền String[] (KHÔNG truyền List): List sẽ bị bung thành ?,?,? làm hỏng ANY().
-     */
     private static String[] toArray(Collection<String> values) {
         return values == null ? new String[0] : values.toArray(String[]::new);
     }

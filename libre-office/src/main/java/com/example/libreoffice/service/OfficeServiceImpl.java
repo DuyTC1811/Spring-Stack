@@ -7,8 +7,8 @@ import com.example.libreoffice.model.CurrentUser;
 import com.example.libreoffice.model.DocumentItem;
 import com.example.libreoffice.model.OfficeDocument;
 import com.example.libreoffice.payload.request.CreateDocumentRequest;
-import com.example.libreoffice.payload.request.OfficeCallback;
-import com.example.libreoffice.payload.response.DocumentCreated;
+import com.example.libreoffice.payload.request.OfficeCallbackRequest;
+import com.example.libreoffice.payload.response.CreateDocumentResponse;
 import com.example.libreoffice.repository.IOfficeRepository;
 import com.example.libreoffice.util.OfficeMime;
 import io.minio.GetPresignedObjectUrlArgs;
@@ -18,6 +18,7 @@ import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
@@ -91,7 +92,7 @@ public class OfficeServiceImpl implements IOfficeService {
     // =====================================================================
 
     @Override
-    public DocumentCreated upload(MultipartFile file, CurrentUser user) {
+    public CreateDocumentResponse upload(MultipartFile file, CurrentUser user) {
         String original = StringUtils.getFilename(Objects.requireNonNullElse(file.getOriginalFilename(), "file"));
         String ext = StringUtils.getFilenameExtension(original);
         ext = ext == null ? "" : ext.toLowerCase();
@@ -107,9 +108,9 @@ public class OfficeServiceImpl implements IOfficeService {
     }
 
     @Override
-    public DocumentCreated createBlank(CreateDocumentRequest req, CurrentUser user) {
+    public CreateDocumentResponse createBlank(CreateDocumentRequest req, CurrentUser user) {
         String ext = req.type().ext();
-        String name = req.name().trim();
+        String name = req.name().strip();
         if (!name.toLowerCase().endsWith("." + ext)) {
             name = name + "." + ext;
         }
@@ -124,7 +125,7 @@ public class OfficeServiceImpl implements IOfficeService {
     /**
      * Upload MinIO trước, ghi DB sau; DB lỗi thì xóa object (bù trừ).
      */
-    private DocumentCreated store(String name, String ext, byte[] data, CurrentUser user) {
+    private CreateDocumentResponse store(String name, String ext, byte[] data, CurrentUser user) {
         UUID id = UUID.randomUUID();
         String objectKey = newObjectKey(id, ext);
 
@@ -140,7 +141,7 @@ public class OfficeServiceImpl implements IOfficeService {
             throw e;
         }
         log.info("Tạo document id={} name={} by={}", id, name, user.id());
-        return new DocumentCreated(id, name, ext);
+        return new CreateDocumentResponse(id, name, ext);
     }
 
     // =====================================================================
@@ -198,7 +199,7 @@ public class OfficeServiceImpl implements IOfficeService {
     // =====================================================================
 
     @Override
-    public int handleCallback(String docId, OfficeCallback cb) {
+    public int handleCallback(String docId, OfficeCallbackRequest cb) {
         UUID id;
         try {
             id = UUID.fromString(docId);
@@ -212,85 +213,127 @@ public class OfficeServiceImpl implements IOfficeService {
             case 2 -> saveVersion(id, cb, true);      // đóng phiên, có thay đổi
             case 6 -> saveVersion(id, cb, false);     // force save
             case 3, 7 -> {
-                log.error("ONLYOFFICE báo lỗi lưu document={} status={}", id, cb.status());
-                officeRepository.insertCallbackLog(id, cb, null, "ONLYOFFICE save error");
+                log.error("LỖI LƯU DOCUMENT {} STATUS {}", id, cb.status());
+                officeRepository.insertCallbackLog(id, cb, null, "ONLY-OFFICE save error");
                 yield 0;
             }
-            default -> 0;                             // 1: đang sửa, 4: đóng không đổi
+            default -> 0; // 1: ĐANG SỬA, 4: ĐÓNG KHÔNG ĐỔI
         };
     }
 
-    private int saveVersion(UUID id, OfficeCallback cb, boolean closeSession) {
-        CallbackTarget target = officeRepository.findCallbackTarget(id).orElse(null);
-        if (target == null) {
-            log.warn("Callback cho document không tồn tại: {}", id);
-            return 0;
-        }
-        if (!target.editorKey().equals(cb.key())) {
-            log.warn("Bỏ qua callback phiên cũ document={} key={} (hiện tại {})",
-                    id, cb.key(), target.editorKey());
-            return 0;
-        }
-        if (closeSession && officeRepository.closeCallbackProcessed(cb.key())) {
-            log.info("Callback status 2 đã xử lý trước đó, key={}", cb.key());
-            return 0;
-        }
-
-        byte[] data;
-        try {
-            data = download(cb.url());
-        } catch (Exception e) {
-            log.error("Không tải được file từ ONLYOFFICE url={}", cb.url(), e);
-            return 1;
-        }
-
-        String objectKey = newObjectKey(id, target.fileExt());
-        try {
-            putObject(target.bucket(), objectKey, data, OfficeMime.of(target.fileExt()));
-        } catch (RuntimeException e) {
-            log.error("Không lưu được lên MinIO document={}", id, e);
-            return 1;
-        }
-
-        List<String> users = cb.users() == null ? List.of() : cb.users();
-        String lastUser = users.isEmpty() ? "onlyoffice" : users.getLast();
+    private int saveVersion(UUID id, OfficeCallbackRequest cb, boolean closeSession) {
         String source = closeSession ? SRC_CLOSE_SAVE : SRC_FORCE_SAVE;
+        long start = System.nanoTime();
 
-        try {
-            Integer newVersion = transactionTemplate.execute(tx -> {
-                Integer v = officeRepository.saveNewVersion(id, cb.key(), objectKey, data.length,
-                        lastUser, closeSession).orElse(null);
-                if (v == null) {
-                    tx.setRollbackOnly();
-                    return null;
-                }
-                officeRepository.insertVersion(id, v, objectKey, data.length, sha256(data),
-                        source, cb.key(), users);
-                officeRepository.insertCallbackLog(id, cb, v, null);
-                return v;
-            });
+        try (var _ = MDC.putCloseable("docId", id.toString());
+             var _ = MDC.putCloseable("key", cb.key());
+             var _ = MDC.putCloseable("status", String.valueOf(cb.status()))) {
 
-            if (newVersion == null) {
-                log.warn("editor_key đã đổi trong lúc xử lý, bỏ qua document={}", id);
-                removeObjectQuietly(target.bucket(), objectKey);
+            log.info("[SAVE] BẮT ĐẦU LƯU VERSION SOURCE [{}] USERS [{}]", source, cb.users());
+
+            // CHECK DOCUMENT CÒN TỒN TẠI HAY KHÔNG
+            CallbackTarget target = officeRepository.findCallbackTarget(id).orElse(null);
+            if (target == null) {
+                log.warn("[SAVE] BỎ QUA: DOCUMENT KHÔNG TỒN TẠI HOẶC ĐÃ XOÁ !");
                 return 0;
             }
-            log.info("Lưu document={} version={} source={} by={}", id, newVersion, source, lastUser);
-            return 0;
+            log.debug("[SAVE] Target ext={} bucket={} currentKey={}", target.fileExt(), target.bucket(), target.editorKey());
 
-        } catch (DuplicateKeyException e) {
-            log.info("Callback trùng (race), bỏ qua key={}", cb.key());
-            removeObjectQuietly(target.bucket(), objectKey);
-            return 0;
-        } catch (RuntimeException e) {
-            log.error("Lỗi ghi DB khi lưu version document={}", id, e);
-            removeObjectQuietly(target.bucket(), objectKey);
-            return 1;
+            // CHECK PHIÊN BẢN HIỆN TẠI
+            if (!target.editorKey().equals(cb.key())) {
+                log.warn("[SAVE] Bỏ qua: callback của phiên cũ (key hiện tại={})", target.editorKey());
+                return 0;
+            }
+
+            // CHECK STATUS 2 ĐÃ SỬ LÝ CHƯA (ONLY-OFFICE retry)
+            if (closeSession && officeRepository.closeCallbackProcessed(cb.key())) {
+                log.info("[SAVE] Bỏ qua: status 2 của phiên này đã được xử lý trước đó");
+                return 0;
+            }
+
+            // FORCE SAVE MÀ KHÔNG CÓ THAY ĐỔI - KHÔNG TẠO VERSION THỪA
+            if (!closeSession && Boolean.TRUE.equals(cb.notmodified())) {
+                log.info("[SAVE] Bỏ qua: force save nhưng tài liệu không thay đổi");
+                return 0;
+            }
+
+            // TẢI FILE ĐÃ SỬA TỪ ONLY-OFFICE
+            byte[] data;
+            long nanoTime = System.nanoTime();
+            try {
+                data = download(cb.url());
+                log.info("[SAVE] TẢI FILE TỪ ONLY-OFFICE OK SIZE [{}] BYTES ({} MS)", data.length, ms(nanoTime));
+            } catch (Exception e) {
+                log.error("[SAVE] TẢI FILE TỪ ONLY-OFFICE THẤT BẠI HOST={} → TRẢ ERROR=1 ĐỂ ONLYOFFICE GỬI LẠI", hostOf(cb.url()), e);
+                return 1;
+            }
+
+            // UPLOAD LÊN MINIO (OBJECT MỚI, KHÔNG GHI ĐÈ)
+            String objectKey = newObjectKey(id, target.fileExt());
+            nanoTime = System.nanoTime();
+            try {
+                putObject(target.bucket(), objectKey, data, OfficeMime.of(target.fileExt()));
+                log.info("[SAVE] UPLOAD MINIO OK OBJECT={}/{} ({} MS)", target.bucket(), objectKey, ms(nanoTime));
+            } catch (RuntimeException e) {
+                log.error("[SAVE] UPLOAD MINIO THẤT BẠI OBJECT={}/{} → TRẢ ERROR=1", target.bucket(), objectKey, e);
+                return 1;
+            }
+
+            List<String> users = cb.users() == null ? List.of() : cb.users();
+            String lastUser = users.isEmpty() ? "only-office" : users.getLast();
+
+            // GHI DB TRONG 1 TRANSACTION
+            try {
+                nanoTime = System.nanoTime();
+                Integer newVersion = transactionTemplate.execute(tx -> {
+                    Integer v = officeRepository.saveNewVersion(id, cb.key(), objectKey, data.length, lastUser, closeSession).orElse(null);
+                    if (v == null) {
+                        tx.setRollbackOnly();
+                        return null;
+                    }
+                    officeRepository.insertVersion(id, v, objectKey, data.length, sha256(data), source, cb.key(), users);
+                    officeRepository.insertCallbackLog(id, cb, v, null);
+                    return v;
+                });
+
+                if (newVersion == null) {
+                    log.warn("[SAVE] ROLLBACK: EDITOR_KEY ĐÃ ĐỔI TRONG LÚC XỬ LÝ → XÓA OBJECT {}", objectKey);
+                    removeObjectQuietly(target.bucket(), objectKey);
+                    return 0;
+                }
+
+                log.info("[SAVE] ✅ LƯU THÀNH CÔNG VERSION [{}] SOURCE={} BY [{}] SIZE [{}] BYTES KEYROTATED [{}] (DB {} MS, TỔNG {} MS)",
+                        newVersion, source, lastUser, data.length, closeSession, ms(nanoTime), ms(start));
+                return 0;
+
+            } catch (DuplicateKeyException e) {
+                log.info("[SAVE] BỎ QUA: CALLBACK TRÙNG (2 REQUEST CÙNG LÚC) -> XÓA OBJECT {}", objectKey, e);
+                removeObjectQuietly(target.bucket(), objectKey);
+                return 0;
+            } catch (RuntimeException e) {
+                log.error("[SAVE] GHI DB THẤT BẠI → XÓA OBJECT {} VÀ TRẢ ERROR=1", objectKey, e);
+                removeObjectQuietly(target.bucket(), objectKey);
+                return 1;
+            }
+        }
+    }
+
+    private static long ms(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000;
+    }
+
+    /** Chỉ log host, không log cả URL (URL cho phép tải nội dung tài liệu). */
+    private static String hostOf(String url) {
+        try {
+            return URI.create(url).getHost();
+        } catch (Exception e) {
+            log.error("[hostOf] ERROR ", e);
+            return "invalid-url";
         }
     }
 
     /**
-     * Chỉ tải từ host ONLYOFFICE được whitelist (chống SSRF).
+     * Chỉ tải từ host ONLY-OFFICE được whitelist (chống SSRF).
      */
     private byte[] download(String url) {
         if (url == null || url.isBlank()) {
@@ -342,7 +385,7 @@ public class OfficeServiceImpl implements IOfficeService {
         try {
             minio.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(key).build());
         } catch (Exception e) {
-            log.error("Không xóa được object mồ côi {}", key, e);
+            log.error("[SAVE] ROLLBACK: EDITOR_KEY ĐÃ ĐỔI TRONG LÚC XỬ LÝ -> XÓA OBJECT {}", key, e);
         }
     }
 
@@ -360,7 +403,7 @@ public class OfficeServiceImpl implements IOfficeService {
     private static UUID parseId(String id) {
         try {
             return UUID.fromString(id);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Id tài liệu không hợp lệ");
         }
     }

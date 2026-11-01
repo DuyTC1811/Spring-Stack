@@ -3,7 +3,7 @@ package com.example.libreoffice.repository;
 import com.example.libreoffice.model.CallbackTarget;
 import com.example.libreoffice.model.DocumentItem;
 import com.example.libreoffice.model.OfficeDocument;
-import com.example.libreoffice.payload.request.OfficeCallback;
+import com.example.libreoffice.payload.request.OfficeCallbackRequest;
 
 import java.util.Collection;
 import java.util.List;
@@ -29,5 +29,5 @@ public interface IOfficeRepository {
 
     Optional<Integer> saveNewVersion(UUID docId, String editorKey, String objectKey, long size, String updatedBy, boolean rotateKey);
 
-    void insertCallbackLog(UUID docId, OfficeCallback cb, Integer resultVersion, String error);
+    void insertCallbackLog(UUID docId, OfficeCallbackRequest cb, Integer resultVersion, String error);
 }
