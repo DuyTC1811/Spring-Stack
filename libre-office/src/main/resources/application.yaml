@@ -1,3 +1,48 @@
 spring:
   application:
     name: libre-office
+
+  datasource:
+    url: jdbc:postgresql://192.168.122.102:5432/postgres
+    username: ${DB_USER:duytc}
+    password: ${DB_PASSWORD:anhduy12}
+    hikari:
+      pool-name: libre-office-pool
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  sql:
+    init:
+      mode: always                  # chạy schema.sql / data.sql khi start (dev)
+      # mode: never                 # production: dùng Flyway/Liquibase thay thế
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 500MB
+      max-request-size: 500MB
+      file-size-threshold: 2KB
+
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://192.168.122.102:9000}                # backend dùng để upload/download
+  presign-endpoint: ${MINIO_PRESIGN_ENDPOINT:http://minio.internal:9000}
+  # host mà ONLYOFFICE Document Server gọi tới
+  access-key: ${MINIO_ACCESS_KEY:duytc}
+  secret-key: ${MINIO_SECRET_KEY:anhduy12}
+  region: us-east-1
+  bucket: ${MINIO_BUCKET:office-docs}
+  auto-create-bucket: true
+
+only-office:
+  # URL backend mà CONTAINER ONLYOFFICE gọi được (không dùng localhost)
+  callback-base-url: http://192.168.122.1:8080
+  bucket: office-docs
+  presign-ttl: 2h
+  # Host trong field "url" của callback (thường là host FE dùng để mở ONLYOFFICE)
+  allowed-download-hosts:
+    - localhost
+    - onlyoffice
+    - 192.168.122.102        # host trong "url" của callback = host trình duyệt dùng để mở ONLYOFFICE

@@ -1,62 +1,82 @@
 package com.example.libreoffice.controller;
 
+import com.example.libreoffice.configuration.config.FakeUserProvider;
+import com.example.libreoffice.model.CurrentUser;
+import com.example.libreoffice.model.DocumentItem;
+import com.example.libreoffice.payload.request.CreateDocumentRequest;
+import com.example.libreoffice.payload.response.DocumentCreated;
+import com.example.libreoffice.service.IOfficeService;
 import lombok.RequiredArgsConstructor;
-import org.apache.tomcat.util.net.openssl.ciphers.Authentication;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.client.RestClient;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/onlyoffice")
 public class OnlyOfficeController {
-    @GetMapping("/api/office/{id}/config")
-    public Map<String, Object> config(@PathVariable String id, Authentication auth) {
-
-//        return Map.of(
-//                "documentType", docType(m.extension()),
-//                "document", Map.of(
-//                        "fileType", m.extension(),
-//                        "key", id + "_" + m.version(),
-//                        "title", m.name(),
-//                        "url", api + "/office/files/" + id),
-//                "editorConfig", Map.of(
-//                        "callbackUrl", api + "/office/callback/" + id,
-//                        "lang", "vi",
-//                        "user", Map.of("id", user.id(), "name", user.displayName()),
-//                        "customization", Map.of("forcesave", true)));
-//        // không còn trường "token"
+    private final IOfficeService officeService;
+    private final FakeUserProvider fakeUsers;
+    /**
+     * Danh sách tài liệu user được truy cập.
+     */
+    @GetMapping("/documents")
+    public ResponseEntity<List<DocumentItem>> list(@RequestHeader(value = FakeUserProvider.HEADER, defaultValue = FakeUserProvider.DEFAULT_USER) String u) {
+        List<DocumentItem> itemList = officeService.list(fakeUsers.resolve(u));
+        return ResponseEntity.ok(itemList);
     }
 
-    @GetMapping("/office/files/{id}")
-    public ResponseEntity<byte[]> file(@PathVariable String id) {
-        return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(storage.read(id));
+    /**
+     * Upload file có sẵn.
+     */
+    @PostMapping(value = "/documents/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<DocumentCreated> upload(
+            @RequestPart("file") MultipartFile file,
+            @RequestHeader(value = FakeUserProvider.HEADER, defaultValue = FakeUserProvider.DEFAULT_USER) String u) {
+        DocumentCreated upload = officeService.upload(file, fakeUsers.resolve(u));
+        return ResponseEntity.status(HttpStatus.CREATED).body(upload);
     }
 
-    @PostMapping("/office/callback/{id}")
-    public Map<String, Integer> callback(@PathVariable String id, @RequestBody Map<String, Object> body) {
-        int status = ((Number) body.get("status")).intValue();
-        if (status == 2 || status == 6) {
-            byte[] data = RestClient.create().get().uri((String) body.get("url")).retrieve().body(byte[].class);
-            storage.write(id, data);
-        }
-        return Map.of("error", 0);
+    /**
+     * Tạo tài liệu trắng từ template.
+     */
+    @PostMapping("/documents")
+    public ResponseEntity<DocumentCreated> create(
+            /*@Valid*/ @RequestBody CreateDocumentRequest req,
+                       @RequestHeader(value = FakeUserProvider.HEADER, defaultValue = FakeUserProvider.DEFAULT_USER) String u) {
+        DocumentCreated created = officeService.createBlank(req, fakeUsers.resolve(u));
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
-    private String docType(String ext) {
-        return switch (ext) {
-            case "xlsx", "xls", "csv", "ods" -> "cell";
-            case "pptx", "ppt", "odp" -> "slide";
-            default -> "word";
-        };
+    /**
+     * Config cho <document-editor>.
+     */
+    @GetMapping("/{id}/config")
+    public ResponseEntity<Map<String, Object>> config(
+            @PathVariable String id,
+            @RequestHeader(value = FakeUserProvider.HEADER, defaultValue = FakeUserProvider.DEFAULT_USER) String u) {
+        Map<String, Object> editorConfig = officeService.getEditorConfig(id, fakeUsers.resolve(u));
+        return ResponseEntity.ok(editorConfig);
+    }
+
+    @DeleteMapping("/documents/{id}")
+    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader(value = FakeUserProvider.HEADER, defaultValue = FakeUserProvider.DEFAULT_USER) String u) {
+        officeService.delete(id, fakeUsers.resolve(u));
+        return ResponseEntity.noContent().build();
     }
 }
