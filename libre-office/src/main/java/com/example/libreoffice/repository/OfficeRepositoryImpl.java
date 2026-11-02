@@ -21,16 +21,24 @@ import java.util.UUID;
 @Repository
 @Transactional
 public class OfficeRepositoryImpl implements IOfficeRepository {
+    public static final String EDITOR_KEY = "editorKey";
     private final JdbcClient jdbcClient;
 
     private static final String SQL_GET_CONFIG = """
-            SELECT d.id, d.name, d.file_ext, d.bucket, d.object_key,
-                   d.current_version, d.editor_key, d.status,
+            SELECT
+                   d.id,
+                   d.name,
+                   d.file_ext,
+                   d.bucket,
+                   d.object_key,
+                   d.current_version,
+                   d.editor_key,
+                   d.status,
                    CASE WHEN d.owner_id = :userId THEN CAST('OWNER' AS doc_permission)
-                        ELSE MAX(p.permission) END AS effective_permission
+                        ELSE MAX(p.permission)
+                   END AS effective_permission
             FROM documents d
-            LEFT JOIN document_permissions p
-                   ON p.document_id = d.id
+            LEFT JOIN document_permissions p ON p.document_id = d.id
                   AND (p.expires_at IS NULL OR p.expires_at > now())
                   AND ( (p.principal_type = 'USER' AND p.principal_id = :userId)
                      OR (p.principal_type = 'ROLE' AND p.principal_id = ANY(CAST(:roles AS varchar[]))) )
@@ -204,7 +212,7 @@ public class OfficeRepositoryImpl implements IOfficeRepository {
                 .param("size", size)
                 .param("checksum", checksum)
                 .param("source", source)
-                .param("editorKey", editorKey)
+                .param(EDITOR_KEY, editorKey)
                 .param("users", toArray(users))
                 .update();
     }
@@ -217,7 +225,7 @@ public class OfficeRepositoryImpl implements IOfficeRepository {
                 .param("updatedBy", updatedBy)
                 .param("rotateKey", rotateKey)
                 .param("docId", docId)
-                .param("editorKey", editorKey)
+                .param(EDITOR_KEY, editorKey)
                 .query(Integer.class) // UPDATE ... RETURNING
                 .optional();
     }
@@ -226,7 +234,7 @@ public class OfficeRepositoryImpl implements IOfficeRepository {
     public void insertCallbackLog(UUID docId, OfficeCallbackRequest cb, Integer resultVersion, String error) {
         jdbcClient.sql(SQL_INSERT_CALLBACK_LOG)
                 .param("docId", docId)
-                .param("editorKey", cb.key())
+                .param(EDITOR_KEY, cb.key())
                 .param("status", cb.status())
                 .param("url", cb.url())
                 .param("users", toArray(cb.users()))

@@ -74,7 +74,7 @@ public class OfficeServiceImpl implements IOfficeService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ chủ sở hữu mới được xóa tài liệu");
         }
 
-        if (officeRepository.softDelete(id, user.id()) == 0) {
+        if (officeRepository.softDelete(id, user.displayName()) == 0) {
             // Bị xóa bởi request khác ngay giữa lúc kiểm tra và cập nhật
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tài liệu đã bị xóa");
         }
@@ -404,13 +404,6 @@ public class OfficeServiceImpl implements IOfficeService {
         } catch (Exception e) {
             log.error("[SAVE] ROLLBACK: EDITOR_KEY ĐÃ ĐỔI TRONG LÚC XỬ LÝ -> XÓA OBJECT {}", key, e);
         }
-    }
-
-    /**
-     * docs/{id}/{uuid}.ext - mỗi version một object, không ghi đè.
-     */
-    private static String newObjectKey(UUID id, String ext) {
-        return "docs/%s/%s.%s".formatted(id, UUID.randomUUID(), ext);
     }
 
     // =====================================================================
