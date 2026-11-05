@@ -1,7 +1,7 @@
 package com.example.springwebsocket.controllers;
 
-import com.example.springwebsocket.entity.Greeting;
-import com.example.springwebsocket.entity.HelloMessage;
+import com.example.springwebsocket.model.Greeting;
+import com.example.springwebsocket.model.HelloMessage;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.stereotype.Controller;

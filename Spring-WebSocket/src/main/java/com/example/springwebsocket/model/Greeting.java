@@ -1,4 +1,4 @@
-package com.example.springwebsocket.entity;
+package com.example.springwebsocket.model;
 
 public class Greeting {
     private String content;
