@@ -1,0 +1,67 @@
+name: observability-dev
+
+# App Spring Boot chạy trên host (IntelliJ): API :8080, actuator :8081
+services:
+  grafana:
+    image: grafana/grafana:12.1.0
+    ports: ["3000:3000"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"        # chỉ cho local
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on: [mimir, loki, tempo]
+
+  mimir:
+    image: grafana/mimir:2.17.0
+    command: ["-config.file=/etc/mimir.yaml"]
+    volumes:
+      - ./mimir.yaml:/etc/mimir.yaml:ro
+      - mimir-data:/tmp/mimir
+    ports: ["9009:9009"]
+
+  loki:
+    image: grafana/loki:3.5.0
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports: ["3100:3100"]
+
+  tempo:
+    image: grafana/tempo:2.8.1
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes: ["./tempo.yaml:/etc/tempo.yaml:ro"]
+    ports: ["3200:3200"]
+
+  alloy:
+    image: grafana/alloy:v1.10.0
+    command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    extra_hosts: ["host.docker.internal:host-gateway"]   # để scrape app/OBI trên host (Linux)
+    ports:
+      - "12345:12345"   # UI của Alloy: xem pipeline có lỗi không
+      - "4318:4318"     # nhận OTLP traces từ OBI
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ${APP_LOG_DIR:-./logs}:/var/log/app:ro         # thư mục log file của app
+    depends_on: [mimir, loki, tempo]
+
+  obi:
+    image: otel/ebpf-instrument:v0.15.2
+    pid: host
+    privileged: true
+    network_mode: host                                   # thấy app trên host, gửi tới localhost:4318
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup
+      - /sys/fs/bpf:/sys/fs/bpf
+      - ./obi/obi-config.yml:/config/obi-config.yml:ro
+    environment:
+      OTEL_EBPF_CONFIG_PATH: /config/obi-config.yml
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://localhost:4318/v1/traces
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EBPF_PROMETHEUS_PORT: 9400
+      OTEL_EBPF_METRICS_FEATURES: application,application_span_otel,application_service_graph
+      OTEL_EBPF_TRACE_PRINTER: text                      # in span ra `docker logs obi` để debug
+    depends_on: [alloy]
+
+volumes:
+  grafana-data:
+  mimir-data:
