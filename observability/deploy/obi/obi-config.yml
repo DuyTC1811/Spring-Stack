@@ -1,0 +1,16 @@
+discovery:
+  instrument:
+    - open_ports: 8080
+      name: observability
+
+routes:
+  patterns:
+    - /api/disbursements/{reference}
+    - /api/disbursements/{reference}/disburse
+  unmatched: heuristic
+
+ebpf:
+  log_enricher:
+    services:
+      - service:
+          - open_ports: '8080'
