@@ -1,0 +1,122 @@
+// =============== METRICS → Mimir ===============
+prometheus.remote_write "mimir" {
+  endpoint {
+    url = "http://mimir:9009/api/v1/push"
+  }
+}
+
+// Micrometer: metrics nghiệp vụ, JVM, Hikari
+prometheus.scrape "spring" {
+  targets = [
+    {"__address__" = "fx-disbursement:8081", "service_name" = "fx-disbursement"},
+    {"__address__" = "fx-rate:8091", "service_name" = "fx-rate"},
+  ]
+  job_name        = "spring"
+  metrics_path    = "/actuator/prometheus"
+  scrape_interval = "15s"
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+}
+
+// OBI: RED metrics HTTP/SQL, span metrics, service graph
+prometheus.scrape "obi" {
+  targets         = [{"__address__" = "obi:9400"}]
+  job_name        = "obi"
+  scrape_interval = "15s"
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+}
+
+// PostgreSQL exporter có sẵn trong Alloy, không cần container riêng
+prometheus.exporter.postgres "fx" {
+  data_source_names = ["postgresql://fx:fx@postgres:5432/fx?sslmode=disable"]
+}
+
+prometheus.scrape "postgres" {
+  targets    = prometheus.exporter.postgres.fx.targets
+  job_name   = "postgres"
+  forward_to = [prometheus.remote_write.mimir.receiver]
+}
+
+// =============== TRACES (OBI) → Tempo ===============
+otelcol.receiver.otlp "default" {
+  grpc { endpoint = "0.0.0.0:4317" }
+  http { endpoint = "0.0.0.0:4318" }
+
+  output {
+    traces = [otelcol.processor.batch.default.input]
+  }
+}
+
+otelcol.processor.batch "default" {
+  output {
+    traces = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+    tls { insecure = true }
+  }
+}
+
+// =============== LOGS (stdout, OBI đã chèn trace_id) → Loki ===============
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "app_logs" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "fx-disbursement|fx-rate"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service_name"
+  }
+}
+
+loki.source.docker "app_logs" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.app_logs.rules
+  forward_to    = [loki.process.app_logs.receiver]
+}
+
+loki.process "app_logs" {
+  // Khi OBI thay dòng log gốc bằng bản đã enrich, chỗ cũ còn lại một dòng toàn NUL bytes
+  stage.drop {
+    expression = "^[\\x00\\s]*$"
+  }
+
+  stage.json {
+    expressions = {
+      trace_id = "",
+      span_id  = "",
+      level    = "\"log.level\"",
+    }
+  }
+
+  // trace_id/span_id cardinality cao → structured metadata, không làm label
+  stage.structured_metadata {
+    values = {
+      trace_id = "",
+      span_id  = "",
+    }
+  }
+
+  stage.labels {
+    values = { level = "" }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
