@@ -4,7 +4,9 @@ name: observability-dev
 services:
   grafana:
     image: grafana/grafana:12.1.0
-    ports: ["3000:3000"]
+    container_name: grafana
+    ports:
+      - "3000:3000"
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"        # chỉ cho local
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
@@ -15,11 +17,13 @@ services:
 
   mimir:
     image: grafana/mimir:2.17.0
+    container_name: mimir
     command: ["-config.file=/etc/mimir.yaml"]
     volumes:
       - ./mimir.yaml:/etc/mimir.yaml:ro
       - mimir-data:/tmp/mimir
-    ports: ["9009:9009"]
+    ports:
+      - "9009:9009"
 
   loki:
     image: grafana/loki:3.5.0
@@ -28,12 +32,15 @@ services:
 
   tempo:
     image: grafana/tempo:2.8.1
+    container_name: tempo
     command: ["-config.file=/etc/tempo.yaml"]
     volumes: ["./tempo.yaml:/etc/tempo.yaml:ro"]
-    ports: ["3200:3200"]
+    ports:
+      - "3200:3200"
 
   alloy:
     image: grafana/alloy:v1.10.0
+    container_name: alloy
     command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
     extra_hosts: ["host.docker.internal:host-gateway"]   # để scrape app/OBI trên host (Linux)
     ports:
@@ -46,6 +53,7 @@ services:
 
   obi:
     image: otel/ebpf-instrument:v0.15.2
+    container_name: otel
     pid: host
     privileged: true
     network_mode: host                                   # thấy app trên host, gửi tới localhost:4318
