@@ -1,6 +1,7 @@
 package com.example.observability.fxstub;
 
 import com.example.observability.model.FxRate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +16,7 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Giả lập dịch vụ tỷ giá bên ngoài để demo: span HTTP client → server, latency dao động và lỗi 503.
  */
+@Slf4j
 @RestController
 @RequestMapping("/internal/fx-rates")
 public class FxRateStubController {
@@ -28,6 +30,10 @@ public class FxRateStubController {
 
     @GetMapping("/{currency}")
     public ResponseEntity<FxRate> getRate(@PathVariable String currency) throws InterruptedException {
+        log.info("Getting rate for {}", currency);
+        log.warn("Simulating latency");
+        log.debug("Sleeping for {}ms", ThreadLocalRandom.current().nextInt(MAX_LATENCY_MS));
+        log.error("Simulating error");
         Thread.sleep(ThreadLocalRandom.current().nextInt(MAX_LATENCY_MS));
 
         if (ThreadLocalRandom.current().nextDouble() < ERROR_RATE) {
@@ -37,6 +43,7 @@ public class FxRateStubController {
         if (rate == null) {
             return ResponseEntity.notFound().build();
         }
+        log.info("Rate for {} is {}", currency, rate);
         return ResponseEntity.ok(new FxRate(currency, rate));
     }
 }
