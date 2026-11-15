@@ -48,6 +48,16 @@ services:
       - grafana-data:/var/lib/grafana
     depends_on: [mimir, loki, tempo]
 
+#  grafana:
+#    environment:
+#      GF_AUTH_ANONYMOUS_ENABLED: "false"          # tắt anonymous Admin
+#      GF_AUTH_LDAP_ENABLED: "true"
+#      GF_AUTH_LDAP_CONFIG_FILE: /etc/grafana/ldap.toml
+#      GF_AUTH_LDAP_ALLOW_SIGN_UP: "true"
+#      LDAP_BIND_PASSWORD: ${LDAP_BIND_PASSWORD}
+#    volumes:
+#      - ./grafana/ldap.toml:/etc/grafana/ldap.toml:ro
+
   mimir:
     image: grafana/mimir:3.2.3                  # classic architecture, không bật ingest storage/Kafka
     command: ["-config.file=/etc/mimir.yaml"]

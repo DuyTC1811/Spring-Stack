@@ -1,0 +1,27 @@
+[[servers]]
+host = "ldap.msb.local"
+port = 636
+use_ssl = true
+bind_dn = "cn=grafana-svc,ou=service,dc=msb,dc=local"
+bind_password = "${LDAP_BIND_PASSWORD}"
+search_filter = "(sAMAccountName=%s)"
+search_base_dns = ["dc=msb,dc=local"]
+
+[servers.attributes]
+username = "sAMAccountName"
+email = "mail"
+name = "givenName"
+surname = "sn"
+
+# Map group LDAP -> role (lấy role đầu tiên khớp)
+[[servers.group_mappings]]
+group_dn = "cn=sre,ou=groups,dc=msb,dc=local"
+org_role = "Admin"
+
+[[servers.group_mappings]]
+group_dn = "cn=backend-dev,ou=groups,dc=msb,dc=local"
+org_role = "Editor"
+
+[[servers.group_mappings]]
+group_dn = "*"
+org_role = "Viewer"
