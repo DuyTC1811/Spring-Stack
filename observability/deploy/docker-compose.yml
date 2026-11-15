@@ -1,75 +1,116 @@
-name: observability-dev
+name: observability
 
-# App Spring Boot chạy trên host (IntelliJ): API :8080, actuator :8081
 services:
-  grafana:
-    image: grafana/grafana:12.1.0
-    container_name: grafana
+  # ---------- App ----------
+  observability:
+    build:
+      context: ..                             # gốc project (chứa Dockerfile, build.gradle.kts)
+      dockerfile: Dockerfile
+    image: observability:dev                  # tag cho image vừa build
     ports:
-      - "3000:3000"
+      - "8080:8080"                             # chỉ public API
+      - "127.0.0.1:8081:8081"                   # actuator: chỉ localhost (để curl debug)
     environment:
-      GF_AUTH_ANONYMOUS_ENABLED: "true"        # chỉ cho local
+      SPRING_DATASOURCE_URL: ${DB_URL}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      APP_ENV: dev
+      OTLP_ENDPOINT: http://host.docker.internal:4318   # Micrometer -> Alloy (qua host)
+      OTEL_SERVICE_NAME: observability          # OBI dùng làm service.name
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      LOGGING_FILE_NAME: ""
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+    extra_hosts: ["host.docker.internal:host-gateway"] # bắt buộc trên Linux
+    labels:
+      logging: alloy                            # Alloy thu stdout
+      app: observability                        # -> service_name trong Loki
+    mem_limit: 1g
+    restart: unless-stopped
+
+  # ---------- LGTM ----------
+  init:
+    image: busybox:1.37
+    user: root
+    entrypoint: ["sh", "-c", "chown -R 10001:10001 /var/tempo /loki"]
+    volumes:
+      - tempo-data:/var/tempo
+      - loki-data:/loki
+    restart: "no"
+
+  grafana:
+    image: grafana/grafana:13.3.1
+    ports: ["3000:3000"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"         # chỉ cho local
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro   # nếu dùng dashboard provisioning
       - grafana-data:/var/lib/grafana
     depends_on: [mimir, loki, tempo]
 
   mimir:
-    image: grafana/mimir:2.17.0
-    container_name: mimir
+    image: grafana/mimir:3.2.3                  # classic architecture, không bật ingest storage/Kafka
     command: ["-config.file=/etc/mimir.yaml"]
     volumes:
-      - ./mimir.yaml:/etc/mimir.yaml:ro
-      - mimir-data:/tmp/mimir
-    ports:
-      - "9009:9009"
+      - ./mimir/mimir.yaml:/etc/mimir.yaml:ro
+      - mimir-data:/data
+    ports: ["9009:9009"]
 
   loki:
-    image: grafana/loki:3.5.0
-    command: ["-config.file=/etc/loki/local-config.yaml"]
+    image: grafana/loki:3.7.9                   # chưa lên 4.0 (đang RC, đổi storage client)
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro # dùng config của mình, không phải local-config mặc định
+      - loki-data:/loki
     ports: ["3100:3100"]
+    depends_on:
+      init: { condition: service_completed_successfully }
 
   tempo:
-    image: grafana/tempo:2.8.1
-    container_name: tempo
+    image: grafana/tempo:3.1.1                  # 3.x: dùng tempo.yaml bản 3.x (live_store, không ingester/compactor)
     command: ["-config.file=/etc/tempo.yaml"]
-    volumes: ["./tempo.yaml:/etc/tempo.yaml:ro"]
-    ports:
-      - "3200:3200"
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports: ["3200:3200"]
+    depends_on:
+      init: { condition: service_completed_successfully }
 
+  # ---------- Collector ----------
   alloy:
-    image: grafana/alloy:v1.10.0
-    container_name: alloy
+    image: grafana/alloy:v1.21.3
     command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
-    extra_hosts: ["host.docker.internal:host-gateway"]   # để scrape app/OBI trên host (Linux)
+    extra_hosts: ["host.docker.internal:host-gateway"]   # scrape OBI :9400 trên host
     ports:
-      - "12345:12345"   # UI của Alloy: xem pipeline có lỗi không
-      - "4318:4318"     # nhận OTLP traces từ OBI
+      - "12345:12345"
+      - "4318:4318"                                      # OTLP từ OBI
     volumes:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
-      - ${APP_LOG_DIR:-./logs}:/var/log/app:ro         # thư mục log file của app
+      - ./alloy/targets:/etc/alloy/targets:ro            # cho discovery.file (spring-apps.json)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
     depends_on: [mimir, loki, tempo]
 
+  # ---------- eBPF instrumentation ----------
   obi:
-    image: otel/ebpf-instrument:v0.15.2
-    container_name: otel
+    image: otel/ebpf-instrument:v0.15.2         # đã là bản stable mới nhất (v1.0.0 đang RC)
     pid: host
     privileged: true
-    network_mode: host                                   # thấy app trên host, gửi tới localhost:4318
+    network_mode: host
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup
       - /sys/fs/bpf:/sys/fs/bpf
       - ./obi/obi-config.yml:/config/obi-config.yml:ro
     environment:
       OTEL_EBPF_CONFIG_PATH: /config/obi-config.yml
-      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://localhost:4318/v1/traces
-      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_EBPF_PROMETHEUS_PORT: 9400
-      OTEL_EBPF_METRICS_FEATURES: application,application_span_otel,application_service_graph
-      OTEL_EBPF_TRACE_PRINTER: text                      # in span ra `docker logs obi` để debug
-    depends_on: [alloy]
+      # OTEL_EBPF_TRACE_PRINTER: text           # bật khi debug
+    depends_on: [alloy]                         # OBI tự phát hiện process, không cần chờ app
 
 volumes:
   grafana-data:
   mimir-data:
+  loki-data:
+  tempo-data:
+  alloy-data:

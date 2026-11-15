@@ -1,16 +1,32 @@
+# OpenTelemetry eBPF Instrumentation (OBI)
+# Tự bắt HTTP/gRPC/SQL ở tầng kernel, không cần sửa code.
+
 discovery:
   instrument:
+    # Phải khớp CẢ HAI: java + listen 8080
+    # Lưu ý: instrument cả process => 8081 (actuator) cũng bị bắt, lọc ở routes
     - open_ports: 8080
+      exe_path: "*java*"
       name: observability
+  exclude_otel_instrumented_services: false
 
 routes:
-  patterns:
-    - /api/disbursements/{reference}
-    - /api/disbursements/{reference}/disburse
   unmatched: heuristic
+  patterns:
+    - /internal/*
+  # Bỏ span/metrics của scrape actuator & health check
+  ignored_patterns:
+    - /actuator/*
 
-ebpf:
-  log_enricher:
-    services:
-      - service:
-          - open_ports: '8080'
+attributes:
+  kubernetes:
+    enable: false
+
+metrics:
+  features:
+    - application
+    - application_service_graph
+
+prometheus_export:
+  port: 9400
+  path: /metrics
