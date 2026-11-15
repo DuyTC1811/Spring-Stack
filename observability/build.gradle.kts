@@ -31,6 +31,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")             // health, metrics, ObservationRegistry
     implementation("org.springframework.boot:spring-boot-starter-opentelemetry")        // Micrometer Tracing + OTel bridge + OTLP exporter
     implementation("net.ttddyy.observation:datasource-micrometer-spring-boot:2.3.0")    // traceId/spanId vào MDC/log
+    runtimeOnly("io.micrometer:micrometer-registry-prometheus")                         // cung cấp /actuator/prometheus cho Alloy scrape
     // ===== Lombok =====
     compileOnly("org.projectlombok:lombok")
     annotationProcessor("org.projectlombok:lombok")
