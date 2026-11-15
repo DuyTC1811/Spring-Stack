@@ -6,10 +6,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false                 # in qua System.out -> phá log JSON; SQL đã có span từ datasource-micrometer
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
   datasource:
     url: jdbc:postgresql://192.168.122.102:5432/postgres
     username: duytc
