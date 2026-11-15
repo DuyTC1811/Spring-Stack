@@ -15,12 +15,11 @@ services:
       SPRING_DATASOURCE_USERNAME: ${DB_USERNAME}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
       APP_ENV: dev
-      OTLP_ENDPOINT: http://host.docker.internal:4318   # Micrometer -> Alloy (qua host)
+      OTLP_ENDPOINT: http://alloy:4318          # cùng compose network -> gọi thẳng tên service
       OTEL_SERVICE_NAME: observability          # OBI dùng làm service.name
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
       LOGGING_FILE_NAME: ""
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
-    extra_hosts: ["host.docker.internal:host-gateway"] # bắt buộc trên Linux
     labels:
       logging: alloy                            # Alloy thu stdout
       app: observability                        # -> service_name trong Loki
