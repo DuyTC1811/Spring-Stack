@@ -18,17 +18,13 @@ spring:
   mvc:
     problemdetails:
       enabled: true
-  http:
-    client:
-      connect-timeout: 2s
-      read-timeout: 3s
-
 fx:
   base-url: ${FX_BASE_URL:http://localhost:8080}
 
 management:
+  # ===== Actuator: tách port, không public qua gateway =====
   server:
-    port: 8081                    # tách port actuator, không public ra ngoài qua gateway
+    port: 8081
   endpoints:
     web:
       exposure:
@@ -36,15 +32,36 @@ management:
   endpoint:
     health:
       probes:
-        enabled: true
-  observations:
-    annotations:
-      enabled: true               # bật @Timed / @Counted (cần spring-boot-starter-aop)
+        enabled: true             # /actuator/health/liveness, /readiness
+
+  # ===== Metrics: Alloy scrape :8081/actuator/prometheus =====
   metrics:
     tags:
       application: ${spring.application.name}
       env: ${APP_ENV:local}
+  otlp:
+    metrics:
+      export:
+        enabled: false            # tắt push OTLP, tránh trùng với scrape
 
+  # ===== Observation API =====
+  observations:
+    annotations:
+      enabled: true               # @Observed / @Timed / @Counted (cần spring-boot-starter-aspectj)
+
+  # ===== Tracing: Micrometer -> OTLP -> Alloy -> Tempo =====
+  tracing:
+    sampling:
+      probability: ${TRACE_SAMPLING:1.0}   # prod: 0.1
+  opentelemetry:
+    resource-attributes:
+      deployment.environment: ${APP_ENV:local}   # để lọc trace theo env trong Tempo
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTLP_ENDPOINT:http://localhost:4318}/v1/traces
+
+# ===== Log: JSON có trace.id / span.id =====
 logging:
   structured:
     format:
