@@ -22,7 +22,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(UnsupportedCurrencyException.class)
     public ProblemDetail handleUnsupportedCurrency(UnsupportedCurrencyException ex) {
-        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "UNSUPPORTED_CURRENCY", ex);
+        return problem(HttpStatus.UNPROCESSABLE_CONTENT, "UNSUPPORTED_CURRENCY", ex);
     }
 
     @ExceptionHandler(IllegalStateTransitionException.class)
